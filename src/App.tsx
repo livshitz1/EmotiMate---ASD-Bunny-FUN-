@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BunnyState, Emotion, ScheduleItem, TimeOfDay, ChatMessage, RewardState, PetType, Language, AudioProfile, AITResult, CalmLog, Photo, TherapyMission } from './types';
+import { BunnyState, Emotion, ScheduleItem, TimeOfDay, ChatMessage, RewardState, PetType, Language, AudioProfile } from './types';
 import { translate } from './i18n/translations';
 import { INITIAL_BUNNY_STATE, INITIAL_SCHEDULE, INITIAL_REWARD_STATE, ACHIEVEMENTS } from './constants';
 import { generateEmotiMateResponse, generateBunnyImage } from './services/geminiService';
@@ -15,7 +15,6 @@ import LittleHelper from './components/LittleHelper';
 import BackgroundMusic from './components/BackgroundMusic';
 import OnboardingScreen from './components/OnboardingScreen';
 import WelcomeMessage from './components/WelcomeMessage';
-import { getWatchData } from './utils/appleWatchUtils';
 import TimeBlindnessExplanation from './components/TimeBlindnessExplanation';
 import RewardAnimation from './components/RewardAnimation';
 import Settings, { AppSettings } from './components/Settings';
@@ -51,24 +50,20 @@ import CleanupTime from './components/CleanupTime';
 import GoodbyeHug from './components/GoodbyeHug';
 import BunnySelfie from './components/BunnySelfie';
 import PhotoAlbum from './components/PhotoAlbum';
-import { EmotionalHub } from './components/EmotionalHub';
-import { TherapyMissions } from './components/TherapyMissions';
-import { CompanionMenu } from './components/CompanionMenu';
-import { ProgressHub } from './components/ProgressHub';
-import { SelfExpressionStudio } from './components/SelfExpressionStudio';
-import { Psychoeducation } from './components/Psychoeducation';
 import CleanHands from './components/CleanHands';
 import { StickerOverlay } from './components/StickerOverlay';
 import WaterBuddy from './components/WaterBuddy';
 import KissAnimation from './components/KissAnimation';
 import BunnyExperience from './components/BunnyExperience';
-import { AITFrequencyTest } from './components/AITFrequencyTest';
-import { AITReportScreen } from './components/AITReportScreen';
-import { scheduleMorningNotification, scheduleRecommendationNotification } from './utils/scheduleNotification';
-
-import UnityStyleHugAnimation from './components/UnityStyleHugAnimation';
+import { scheduleMorningNotification } from './utils/scheduleNotification';
 
 const App: React.FC = () => {
+  // Global definitions for legacy components or those missing imports
+  useEffect(() => {
+    (window as any).isHebrew = currentLanguage === Language.HEBREW;
+    (window as any).translate = translate;
+  }, [currentLanguage]);
+
   // --- State ---
   const [bunny, setBunny] = useState<BunnyState>(() => {
     const saved = localStorage.getItem('emotimate_bunny_customization');
@@ -91,7 +86,6 @@ const App: React.FC = () => {
   });
 
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const safeChatHistory = Array.isArray(chatHistory) ? chatHistory : [];
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
@@ -102,11 +96,10 @@ const App: React.FC = () => {
     if (saved) {
       const parsed = JSON.parse(saved);
       const today = new Date().toISOString().split('T')[0];
-      const achievements = Array.isArray(parsed.achievements) ? parsed.achievements : ACHIEVEMENTS;
       if (parsed.lastResetDate !== today) {
-        return { ...INITIAL_REWARD_STATE, totalPoints: parsed.totalPoints, streak: parsed.streak, achievements, lastResetDate: today };
+        return { ...INITIAL_REWARD_STATE, totalPoints: parsed.totalPoints, streak: parsed.streak, achievements: parsed.achievements || ACHIEVEMENTS, lastResetDate: today };
       }
-      return { ...parsed, achievements };
+      return { ...parsed, achievements: parsed.achievements || ACHIEVEMENTS };
     }
     return { ...INITIAL_REWARD_STATE, achievements: ACHIEVEMENTS };
   });
@@ -118,8 +111,6 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('emotimate_language');
     return (saved as Language) || Language.HEBREW;
   });
-
-  const isHebrew = currentLanguage === Language.HEBREW;
 
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => !localStorage.getItem('emotimate_onboarding_completed'));
   const [showWelcomeMessage, setShowWelcomeMessage] = useState<boolean>(() => !localStorage.getItem('emotimate_welcome_seen') && !!localStorage.getItem('emotimate_onboarding_completed'));
@@ -138,33 +129,6 @@ const App: React.FC = () => {
   const [showWeeklyAlbum, setShowWeeklyAlbum] = useState<boolean>(false);
   const [showPhotoAlbum, setShowPhotoAlbum] = useState<boolean>(false);
   const [showBunnySelfie, setShowBunnySelfie] = useState<boolean>(false);
-  const [showEmotionalHub, setShowEmotionalHub] = useState<boolean>(false);
-  const [showTherapyMissions, setShowTherapyMissions] = useState<boolean>(false);
-  const [showCompanionMenu, setShowCompanionMenu] = useState<boolean>(false);
-  const [showProgressHub, setShowProgressHub] = useState<boolean>(false);
-  const [showSelfExpressionStudio, setShowSelfExpressionStudio] = useState<boolean>(false);
-  const [showPsychoeducation, setShowPsychoeducation] = useState<boolean>(false);
-  const [showHealthyPlate, setShowHealthyPlate] = useState<boolean>(false);
-  const [showWaterBuddy, setShowWaterBuddy] = useState<boolean>(false);
-  const [showAITTest, setShowAITTest] = useState<boolean>(false);
-  const [showAITReport, setShowAITReport] = useState<boolean>(false);
-  const [showHugAnimation, setShowHugAnimation] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<any>(() => {
-    const saved = localStorage.getItem('emotimate_user');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [emotionalPoints, setEmotionalPoints] = useState<number>(() => {
-    const saved = localStorage.getItem('emotimate_emotional_points');
-    return saved ? parseInt(saved) : 0;
-  });
-  const [unlockedMissions, setUnlockedMissions] = useState<string[]>(() => {
-    const saved = localStorage.getItem('emotimate_unlocked_missions');
-    return saved ? JSON.parse(saved) : ['breathing_1', 'counting_5'];
-  });
-  const [calmLogs, setCalmLogs] = useState<CalmLog[]>(() => {
-    const saved = localStorage.getItem('emotimate_calm_logs');
-    return saved ? JSON.parse(saved) : [];
-  });
   const [showTeacherShare, setShowTeacherShare] = useState<boolean>(false);
   const [showGrandparentsShare, setShowGrandparentsShare] = useState<boolean>(false);
   const [showParentDashboard, setShowParentDashboard] = useState<boolean>(false);
@@ -190,7 +154,6 @@ const App: React.FC = () => {
     return false;
   });
   const [showBedtimeStory, setShowBedtimeStory] = useState<boolean>(false);
-  const [isBedtimeStoryPlaying, setIsBedtimeStoryPlaying] = useState<boolean>(false);
   const [showStoryTime, setShowStoryTime] = useState<boolean>(false);
   const [dailyGratitude, setDailyGratitude] = useState<string>(() => {
     const saved = localStorage.getItem('emotimate_daily_gratitude');
@@ -222,7 +185,6 @@ const App: React.FC = () => {
   const [showBathTime, setShowBathTime] = useState<boolean>(false);
   const [showCleanupTime, setShowCleanupTime] = useState<boolean>(false);
   const [showLittleHelper, setShowLittleHelper] = useState<boolean>(false);
-  const [musicSleepTimer, setMusicSleepTimer] = useState<number | null>(null);
   const [completedSelfCareCount, setCompletedSelfCareCount] = useState<number>(() => {
     const saved = localStorage.getItem('emotimate_self_care_completed');
     if (saved) {
@@ -262,15 +224,59 @@ const App: React.FC = () => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [safeChatHistory, isProcessing]);
+  }, [chatHistory, isProcessing]);
 
-  // --- Callbacks & Handlers ---
-  const addMessage = useCallback((sender: 'user' | 'bot', text: string, audioUrl?: string, imageUrl?: string): string => {
-    const messageId = Date.now().toString() + Math.random();
-    setChatHistory(prev => [...prev, { id: messageId, sender, text, audioUrl, imageUrl, timestamp: new Date() }]);
-    return messageId;
+  // --- Audio Initialization ---
+  useEffect(() => {
+    const resumeAudio = async () => {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        const ctx = new AudioContext();
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+        }
+        setAudioStarted(true);
+      }
+      document.removeEventListener('click', resumeAudio);
+      document.removeEventListener('touchstart', resumeAudio);
+    };
+    document.addEventListener('click', resumeAudio);
+    document.addEventListener('touchstart', resumeAudio);
+    return () => {
+      document.removeEventListener('click', resumeAudio);
+      document.removeEventListener('touchstart', resumeAudio);
+    };
   }, []);
 
+  useEffect(() => { bunnyRef.current = bunny; }, [bunny]);
+  useEffect(() => { chatHistoryRef.current = chatHistory; }, [chatHistory]);
+  useEffect(() => { localStorage.setItem('emotimate_rewards', JSON.stringify(rewards)); }, [rewards]);
+  useEffect(() => { localStorage.setItem('emotimate_language', currentLanguage); }, [currentLanguage]);
+  useEffect(() => { localStorage.setItem('emotimate_stars', totalSelfCareCount.toString()); }, [totalSelfCareCount]);
+
+  const handleShopPurchase = (item: ShopItem) => {
+    setTotalSelfCareCount(prev => prev - item.price);
+    setUnlockedItems(prev => {
+      const updated = [...prev, item.id];
+      localStorage.setItem('emotimate_owned_items', JSON.stringify(updated));
+      return updated;
+    });
+    setBunny(prev => ({
+      ...prev,
+      customization: {
+        ...prev.customization,
+        [item.category === 'bowtie' ? 'bow' : item.category]: item.id
+      },
+      currentAnimation: 'excited'
+    }));
+    handleInteraction('purchase', item.id);
+    setSoundTrigger('points');
+    setTimeout(() => {
+      setBunny(prev => ({ ...prev, currentAnimation: 'idle' }));
+    }, 3000);
+  };
+
+  // Handlers
   const updateBunnyStats = useCallback((action: string) => {
     setBunny(prev => {
       let { hunger, energy, happiness } = prev;
@@ -292,15 +298,6 @@ const App: React.FC = () => {
         happiness = Math.min(100, happiness + 25);
       } else if (act.includes('breathe')) {
         happiness = Math.min(100, happiness + 5);
-      } else if (act.includes('plate') || act.includes('healthy')) {
-        hunger = Math.min(100, hunger + 20);
-        happiness = Math.min(100, happiness + 15);
-      } else if (act.includes('water')) {
-        happiness = Math.min(100, happiness + 5);
-        energy = Math.min(100, energy + 5);
-      } else if (act.includes('chat_guided') || act.includes('how_help') || act.includes('bunny_feelings') || act.includes('grow_together')) {
-        happiness = Math.min(100, happiness + 10);
-        energy = Math.max(0, energy - 5);
       }
 
       // Determine emotion based on stats
@@ -314,36 +311,17 @@ const App: React.FC = () => {
     });
   }, []);
 
-  const handleLogEmotion = useCallback((mood: string, notes?: string) => {
-    const newLog: CalmLog = {
-      timestamp: new Date().toISOString(),
-      duration: 0,
-      type: 'emotion_check',
-      mood: mood as any,
-      notes: notes
-    };
-    const updatedLogs = [...calmLogs, newLog];
-    setCalmLogs(updatedLogs);
-    localStorage.setItem('emotimate_calm_logs', JSON.stringify(updatedLogs));
-    
-    // Reward for emotional awareness
-    setRewards(prev => ({ ...prev, totalPoints: prev.totalPoints + 10 }));
-    setEmotionalPoints(prev => {
-      const newVal = prev + 15;
-      localStorage.setItem('emotimate_emotional_points', newVal.toString());
-      return newVal;
-    });
-    setSoundTrigger('points');
-    
-    // Feedback
-    addMessage('bot', currentLanguage === Language.HEBREW 
-      ? `תודה ששיתפת אותי שאתה מרגיש ${translate(mood as any, currentLanguage)}. זה מאוד עוזר!` 
-      : `Thanks for sharing that you feel ${translate(mood as any, currentLanguage)}. It helps a lot!`
-    );
-  }, [calmLogs, currentLanguage, addMessage]);
+  const addMessage = useCallback((sender: 'user' | 'bot', text: string, audioUrl?: string, imageUrl?: string): string => {
+    const messageId = Date.now().toString() + Math.random();
+    setChatHistory(prev => [...prev, { id: messageId, sender, text, audioUrl, imageUrl, timestamp: new Date() }]);
+    return messageId;
+  }, []);
 
   const handleInteraction = useCallback(async (actionType: string, customInput?: string) => {
-    // identify the actual content to display
+    if (isProcessing) return;
+    setIsProcessing(true);
+
+    // Identify the actual content to display
     let contentToDisplay = customInput || actionType;
     
     // Translate common types to Hebrew labels for the chat
@@ -364,11 +342,7 @@ const App: React.FC = () => {
         'feed': 'להאכיל 🥕',
         'play': 'לשחק ⚽',
         'hug': 'לחבק ❤️',
-        'breathing': 'נשימה 🧘',
-        'chat_guided': 'בוא נדבר 💬',
-        'how_help': 'איך אני יכול לעזור? ❤️',
-        'bunny_feelings': 'איך אתה מרגיש היום? 🤔',
-        'grow_together': 'איך גדלנו היום? 🌱'
+        'breathing': 'נשימה 🧘'
       };
       
       if (translations[contentToDisplay]) {
@@ -376,30 +350,7 @@ const App: React.FC = () => {
       }
     }
 
-    // Logic Advancement: Check for specific emotional inputs to update state
-    if (contentToDisplay.includes('שמח') || contentToDisplay.toLowerCase().includes('happy')) {
-      setBunny(prev => ({ ...prev, happiness: Math.min(100, prev.happiness + 10) }));
-      handleLogEmotion('happy', 'Selected from chat');
-    } else if (contentToDisplay.includes('עצוב') || contentToDisplay.toLowerCase().includes('sad')) {
-      setBunny(prev => ({ ...prev, happiness: Math.max(0, prev.happiness - 10) }));
-      handleLogEmotion('sad', 'Selected from chat');
-    } else if (contentToDisplay.includes('עייף') || contentToDisplay.toLowerCase().includes('tired')) {
-      setBunny(prev => ({ ...prev, energy: Math.max(0, prev.energy - 15) }));
-      handleLogEmotion('tired', 'Selected from chat');
-    } else if (contentToDisplay.includes('רגוע') || contentToDisplay.toLowerCase().includes('calm')) {
-      setBunny(prev => ({ ...prev, happiness: Math.min(100, prev.happiness + 5) }));
-      handleLogEmotion('calm', 'Selected from chat');
-    }
-
-    if (actionType !== 'start') {
-      addMessage('user', contentToDisplay);
-      if (['chat_guided', 'how_help', 'bunny_feelings', 'grow_together'].includes(actionType)) {
-        setSoundTrigger('points');
-      }
-    }
-
-    if (isProcessing) return;
-    setIsProcessing(true);
+    if (actionType !== 'start') addMessage('user', contentToDisplay);
 
     // Update bunny stats based on the action
     updateBunnyStats(customInput || actionType);
@@ -443,109 +394,33 @@ const App: React.FC = () => {
         generateBunnyImage(actionType, bunnyRef.current.currentEmotion)
       ]);
 
-    if (isMounted.current) {
-      if (imageUrl) setCurrentImage(imageUrl);
-      
-      // Adapt response length/tone by age group
-      let adaptedResponse = textResponse;
-      const age = appSettings.childAge;
-      if (age === '0-3') {
-        adaptedResponse = textResponse.length > 60 ? textResponse.substring(0, 60) + '...' : textResponse;
-      } else if (age === '3-6') {
-        adaptedResponse = textResponse.length > 120 ? textResponse.substring(0, 120) + '...' : textResponse;
+      if (isMounted.current) {
+        if (imageUrl) setCurrentImage(imageUrl);
+        addMessage('bot', textResponse, undefined, imageUrl || undefined);
       }
-
-      addMessage('bot', adaptedResponse, undefined, imageUrl || undefined);
-    }
     } catch (e) {
       console.error("Interaction failed", e);
     } finally {
       if (isMounted.current) setIsProcessing(false);
     }
-  }, [isProcessing, addMessage, currentLanguage, rewards, isCalmMode, isNightMode, isMorningMode, isPickUpMode, showBathTime, isBunnySleeping, showBedtimeStory, isQuietMode, updateBunnyStats, handleLogEmotion]);
+  }, [isProcessing, addMessage]);
 
-  const handleShopPurchase = (item: ShopItem) => {
-    setTotalSelfCareCount(prev => prev - item.price);
-    setUnlockedItems(prev => {
-      const updated = [...prev, item.id];
-      localStorage.setItem('emotimate_owned_items', JSON.stringify(updated));
-      return updated;
-    });
-    setBunny(prev => ({
-      ...prev,
-      customization: {
-        ...prev.customization,
-        [item.category === 'bowtie' ? 'bow' : item.category]: item.id
-      },
-      currentAnimation: 'excited'
-    }));
-    handleInteraction('purchase', item.id);
-    setSoundTrigger('points');
-    setTimeout(() => {
-      setBunny(prev => ({ ...prev, currentAnimation: 'idle' }));
-    }, 3000);
-  };
-
-  const handleOnboardingComplete = (selectedPet: PetType, audioProfile: AudioProfile, age: AgeGroup) => {
+  const handleOnboardingComplete = (selectedPet: PetType, audioProfile: AudioProfile, childName: string, childAge: number) => {
     setBunny(prev => ({ ...prev, customization: { ...prev.customization, petType: selectedPet } }));
-    setAppSettings(prev => ({ ...prev, childAge: age }));
-    localStorage.setItem('emotimate_app_settings', JSON.stringify({ ...appSettings, childAge: age }));
     localStorage.setItem('emotimate_audio_profile', JSON.stringify(audioProfile));
+    
+    // Save child details to settings
+    const updatedSettings = { 
+      ...appSettings, 
+      childNickname: childName, 
+      childAge: childAge 
+    };
+    setAppSettings(updatedSettings);
+    localStorage.setItem('emotimate_app_settings', JSON.stringify(updatedSettings));
+
     localStorage.setItem('emotimate_onboarding_completed', 'true');
     setShowOnboarding(false);
     setTimeout(() => setShowWelcomeMessage(true), 500);
-  };
-
-  const handleCompleteTherapyMission = (mission: TherapyMission) => {
-    const newLog: CalmLog = {
-      timestamp: new Date().toISOString(),
-      duration: 5, // Estimated duration
-      type: 'therapy_mission',
-      label: mission.titleEn,
-      activity: mission.id
-    };
-    const updatedLogs = [...calmLogs, newLog];
-    setCalmLogs(updatedLogs);
-    localStorage.setItem('emotimate_calm_logs', JSON.stringify(updatedLogs));
-
-    // Unlock next mission if applicable
-    if (mission.id === 'counting_5') {
-       const newUnlocked = [...unlockedMissions, 'focus_butterfly'];
-       setUnlockedMissions(newUnlocked);
-       localStorage.setItem('emotimate_unlocked_missions', JSON.stringify(newUnlocked));
-       
-       // Schedule recommendation notification
-       scheduleRecommendationNotification(
-         currentLanguage === Language.HEBREW ? "משימה חדשה נפתחה! 🎯" : "New Mission Unlocked! 🎯",
-         currentLanguage === Language.HEBREW ? "הארנב מחכה לך עם משימת הפרפר! 🦋" : "The Bunny is waiting for you with the Butterfly mission! 🦋",
-         60 // 1 hour later
-       );
-    } else if (mission.id === 'focus_butterfly') {
-       const newUnlocked = [...unlockedMissions, 'slow_turtle'];
-       setUnlockedMissions(newUnlocked);
-       localStorage.setItem('emotimate_unlocked_missions', JSON.stringify(newUnlocked));
-
-       // Schedule recommendation notification
-       scheduleRecommendationNotification(
-         currentLanguage === Language.HEBREW ? "משימה חדשה נפתחה! 🎯" : "New Mission Unlocked! 🎯",
-         currentLanguage === Language.HEBREW ? "הארנב מחכה לך עם משימת הצב! 🐢" : "The Bunny is waiting for you with the Turtle mission! 🐢",
-         60 // 1 hour later
-       );
-    }
-
-    setRewards(prev => ({ ...prev, totalPoints: prev.totalPoints + mission.points }));
-    setEmotionalPoints(prev => {
-      const newVal = prev + 20;
-      localStorage.setItem('emotimate_emotional_points', newVal.toString());
-      return newVal;
-    });
-    setSoundTrigger('achievement');
-    setBunnyAnimation('happy');
-    
-    addMessage('bot', currentLanguage === Language.HEBREW 
-      ? `כל הכבוד! סיימת את המשימה ${mission.titleHe}. קיבלת ${mission.points} כוכבים!` 
-      : `Well done! You finished the ${mission.titleEn} mission. You earned ${mission.points} stars!`
-    );
   };
 
   const handleShareWithGrandparents = () => {
@@ -565,6 +440,98 @@ const App: React.FC = () => {
       setBunnyAnimation(undefined);
     }, 5000);
   };
+
+  // --- Unity-React Bridge ---
+  useEffect(() => {
+    const handleUnityMessage = (event: MessageEvent) => {
+      // Unity communications usually come through postMessage in WebGL or custom bridge in Native
+      // The payload is typically in event.data
+      const data = event.data;
+      if (!data || typeof data !== 'object') return;
+
+      const { type, action, value, location } = data;
+
+      // 1. Sync GPS Location from Unity's GPSManager
+      if (type === 'UNITY_GPS_UPDATE' && location) {
+        const isSafe = checkIsSafeZone(location);
+        setIsSafeZone(isSafe);
+      }
+
+      // 2. Sync Bunny Stats from AR Interactions
+      // User preferred logic for 'feed_grass'
+      if (action === 'feed_grass' || (type === 'UNITY_AR_INTERACTION' && action === 'feed' && value === 'grass')) {
+        updateBunnyStats('feed'); // Update bunny hunger via React helper
+        setTotalSelfCareCount(prev => prev + 10); // Bonus for outdoor AR activity
+        setSoundTrigger('points');
+        handleInteraction('ar_feed_grass');
+      } else if (type === 'UNITY_AR_INTERACTION') {
+        if (action === 'drink' && value === 'water') {
+          setBunny(prev => ({ ...prev, happiness: Math.min(100, prev.happiness + 5) }));
+          handleInteraction('ar_drink_water');
+        }
+      }
+
+      // 3. Handle AR Failures/Unsupported
+      if (type === 'UNITY_AR_ERROR') {
+        console.error("Unity AR Error:", value);
+        setShowUnityAR(false);
+      }
+    };
+
+    window.addEventListener('message', handleUnityMessage);
+    return () => window.removeEventListener('message', handleUnityMessage);
+  }, [handleInteraction, updateBunnyStats]);
+
+  // Helper for GPS check
+  const checkIsSafeZone = (location: { lat: number; lng: number }) => {
+    // Placeholder logic for Safe Zone (Home/School)
+    // In a real app, we'd compare against appSettings.homeAddress/schoolName coordinates
+    console.log("Checking GPS Location:", location);
+    return true; // Default to true for now
+  };
+
+  const handleOpenAR = () => {
+    // Toggle logic: If already open, close it. Otherwise, check safe zone and open.
+    if (showUnityAR) {
+      setShowUnityAR(false);
+      return;
+    }
+
+    // GPS-Based Trigger: AR bunny should only spawn if in a 'Safe Zone'
+    if (isSafeZone || true) { // Defaulting to true for demo
+      setShowUnityAR(true);
+      handleInteraction('ar_world_open');
+    } else {
+      alert(currentLanguage === Language.HEBREW ? 'מחוץ לאזור בטוח! אי אפשר להוציא את הארנב כאן' : 'Outside safe zone! Cannot spawn bunny here.');
+    }
+  };
+
+  const handleSettingsChange = useCallback((s: AppSettings) => { 
+    setAppSettings(s); 
+    if (s.isQuietMode !== undefined && s.isQuietMode !== isQuietMode) {
+      setIsQuietMode(s.isQuietMode);
+      if (s.isQuietMode) {
+        handleInteraction('quiet_mode_start');
+      } else {
+        // Trigger cleanup automatically when exiting Quiet Mode
+        setShowCleanupTime(true);
+        handleInteraction('cleanup_start');
+      }
+    }
+    localStorage.setItem('emotimate_app_settings', JSON.stringify(s)); 
+
+    // Sync Coordinates for Unity PlayerPrefs
+    // Unity's BunnyARController expects SchoolLat, SchoolLon
+    if (s.schoolLat && s.schoolLon) {
+      localStorage.setItem('SchoolLat', s.schoolLat);
+      localStorage.setItem('SchoolLon', s.schoolLon);
+    }
+    
+    if (s.homeLat && s.homeLon) {
+      localStorage.setItem('HomeLat', s.homeLat);
+      localStorage.setItem('HomeLon', s.homeLon);
+    }
+  }, [isQuietMode, handleInteraction]);
 
   const handleSavePhoto = (imageData: string) => {
     const newPhoto: Photo = {
@@ -621,192 +588,50 @@ const App: React.FC = () => {
     setShowLittleHelper(false);
     setShowStoryTime(false);
     setShowBedtimeStory(false);
-    setShowAITTest(false);
-    setShowAITReport(false);
     setIsProcessing(false);
     handleInteraction('reset_view');
+  };
 
   const handleFullReset = () => {
+    // Clear all game-related localStorage
     const keysToRemove = [
-      'emotimate_bunny_customization', 'emotimate_rewards', 'emotimate_language',
-      'emotimate_onboarding_completed', 'emotimate_welcome_seen', 'emotimate_owned_items',
-      'photo_album', 'emotimate_has_shared_with_teacher', 'emotimate_daily_gratitude',
-      'emotimate_stars', 'emotimate_app_settings', 'emotimate_self_care_completed',
-      'emotimate_self_care_reset_date', 'emotimate_audio_profile', 'emotimate_gratitude_history',
-      'emotimate_star_history', 'daily_summaries', 'calm_logs', 'parent_voice_note',
-      'current_collaborative_goal', 'emotimate_grand_prize', 'emotimate_soft_fabrics_only',
-      'emotimate_last_kiss_sent', 'emotimate_ait_results', 'emotimate_calm_logs'
+      'emotimate_bunny_customization',
+      'emotimate_rewards',
+      'emotimate_language',
+      'emotimate_onboarding_completed',
+      'emotimate_welcome_seen',
+      'emotimate_owned_items',
+      'photo_album',
+      'emotimate_has_shared_with_teacher',
+      'emotimate_daily_gratitude',
+      'emotimate_stars',
+      'emotimate_app_settings',
+      'emotimate_self_care_completed',
+      'emotimate_self_care_reset_date',
+      'emotimate_audio_profile',
+      'emotimate_gratitude_history',
+      'emotimate_star_history',
+      'daily_summaries',
+      'calm_logs',
+      'parent_voice_note',
+      'current_collaborative_goal',
+      'emotimate_grand_prize',
+      'emotimate_soft_fabrics_only',
+      'emotimate_last_kiss_sent',
+      'emotimate_ait_results',
+      'emotimate_calm_logs'
     ];
+    
     keysToRemove.forEach(key => localStorage.removeItem(key));
+    
+    // Force reload to start from scratch
     window.location.reload();
   };
-  };
-
-  const handleSettingsChange = useCallback((s: AppSettings) => { 
-    setAppSettings(s); 
-    if (s.isQuietMode !== undefined && s.isQuietMode !== isQuietMode) {
-      setIsQuietMode(s.isQuietMode);
-      if (s.isQuietMode) {
-        handleInteraction('quiet_mode_start');
-      } else {
-        // Trigger cleanup automatically when exiting Quiet Mode
-        setShowCleanupTime(true);
-        handleInteraction('cleanup_start');
-      }
-    }
-    localStorage.setItem('emotimate_app_settings', JSON.stringify(s)); 
-
-    // Sync Coordinates for Unity PlayerPrefs
-    // Unity's BunnyARController expects SchoolLat, SchoolLon
-    if (s.schoolLat && s.schoolLon) {
-      localStorage.setItem('SchoolLat', s.schoolLat);
-      localStorage.setItem('SchoolLon', s.schoolLon);
-    }
-    
-    if (s.homeLat && s.homeLon) {
-      localStorage.setItem('HomeLat', s.homeLat);
-      localStorage.setItem('HomeLon', s.homeLon);
-    }
-  }, [isQuietMode, handleInteraction]);
-
-  // GPS-Based Trigger Helper
-  const checkIsSafeZone = (location: { lat: number; lng: number }) => {
-    // Placeholder logic for Safe Zone (Home/School)
-    // In a real app, we'd compare against appSettings.homeAddress/schoolName coordinates
-    console.log("Checking GPS Location:", location);
-    return true; // Default to true for now
-  };
-
-  const handleOpenAR = () => {
-    // Toggle logic: If already open, close it. Otherwise, check safe zone and open.
-    if (showUnityAR) {
-      setShowUnityAR(false);
-      return;
-    }
-
-    // GPS-Based Trigger: AR bunny should only spawn if in a 'Safe Zone'
-    if (isSafeZone || true) { // Defaulting to true for demo
-      setShowUnityAR(true);
-      handleInteraction('ar_world_open');
-    } else {
-      alert(currentLanguage === Language.HEBREW ? 'מחוץ לאזור בטוח! אי אפשר להוציא את הארנב כאן' : 'Outside safe zone! Cannot spawn bunny here.');
-    }
-  };
-
-  // --- Audio Initialization ---
-  useEffect(() => {
-    const resumeAudio = async () => {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioContext) {
-        const ctx = new AudioContext();
-        if (ctx.state === 'suspended') {
-          await ctx.resume();
-        }
-        setAudioStarted(true);
-      }
-      document.removeEventListener('click', resumeAudio);
-      document.removeEventListener('touchstart', resumeAudio);
-    };
-    document.addEventListener('click', resumeAudio);
-    document.addEventListener('touchstart', resumeAudio);
-    return () => {
-      document.removeEventListener('click', resumeAudio);
-      document.removeEventListener('touchstart', resumeAudio);
-    };
-  }, []);
-
-  useEffect(() => { bunnyRef.current = bunny; }, [bunny]);
-  useEffect(() => { 
-    if (bunny.customization) {
-      localStorage.setItem('emotimate_bunny_customization', JSON.stringify(bunny.customization)); 
-    }
-  }, [bunny.customization]);
-  useEffect(() => { chatHistoryRef.current = chatHistory; }, [chatHistory]);
-  useEffect(() => { localStorage.setItem('emotimate_rewards', JSON.stringify(rewards)); }, [rewards]);
-  useEffect(() => { localStorage.setItem('emotimate_language', currentLanguage); }, [currentLanguage]);
-  useEffect(() => { localStorage.setItem('emotimate_stars', totalSelfCareCount.toString()); }, [totalSelfCareCount]);
-
-  // --- Apple Watch Data Polling ---
-  useEffect(() => {
-    if (appSettings.appleWatchEnabled) {
-      const interval = setInterval(async () => {
-        const data = await getWatchData();
-        if (data && data.heartRate > 100) {
-          // If heart rate is high, bunny might suggest breathing
-          handleInteraction('high_heart_rate', data.heartRate.toString());
-        }
-      }, 30000); // Check every 30 seconds
-      return () => clearInterval(interval);
-    }
-  }, [appSettings.appleWatchEnabled, handleInteraction]);
-
-  const handleLogMusicChoice = useCallback((trackId: string, trackTitle: string) => {
-    if (trackId === 'off') return;
-    
-    const newLog: CalmLog = {
-      timestamp: new Date().toISOString(),
-      duration: 0,
-      type: 'music_choice',
-      activity: trackId,
-      label: trackTitle
-    };
-    setCalmLogs(prev => {
-      const updated = [...prev, newLog];
-      localStorage.setItem('emotimate_calm_logs', JSON.stringify(updated));
-      return updated;
-    });
-    
-    console.log(`Logged music choice: ${trackTitle} (${trackId})`);
-  }, []);
-
-  // --- Unity-React Bridge ---
-  useEffect(() => {
-    const handleUnityMessage = (event: MessageEvent) => {
-      // Unity communications usually come through postMessage in WebGL or custom bridge in Native
-      // The payload is typically in event.data
-      const data = event.data;
-      if (!data || typeof data !== 'object') return;
-
-      const { type, action, value, location } = data;
-
-      // 1. Sync GPS Location from Unity's GPSManager
-      if (type === 'UNITY_GPS_UPDATE' && location) {
-        const isSafe = checkIsSafeZone(location);
-        setIsSafeZone(isSafe);
-      }
-
-      // 2. Sync Bunny Stats from AR Interactions
-      // User preferred logic for 'feed_grass'
-      if (action === 'feed_grass' || (type === 'UNITY_AR_INTERACTION' && action === 'feed' && value === 'grass')) {
-        updateBunnyStats('feed'); // Update bunny hunger via React helper
-        setTotalSelfCareCount(prev => prev + 10); // Bonus for outdoor AR activity
-        setSoundTrigger('points');
-        handleInteraction('ar_feed_grass');
-      } else if (type === 'UNITY_AR_INTERACTION') {
-        if (action === 'drink' && value === 'water') {
-          setBunny(prev => ({ ...prev, happiness: Math.min(100, prev.happiness + 5) }));
-          handleInteraction('ar_drink_water');
-        }
-      }
-
-      // 3. Handle AR Failures/Unsupported
-      if (type === 'UNITY_AR_ERROR') {
-        console.error("Unity AR Error:", value);
-        setShowUnityAR(false);
-      }
-    };
-
-    window.addEventListener('message', handleUnityMessage);
-    return () => window.removeEventListener('message', handleUnityMessage);
-  }, [handleInteraction, updateBunnyStats]);
 
   // Initial setup
   useEffect(() => {
-    // Setup scheduled notifications on mount with a small delay to ensure platform is ready
-    const timer = setTimeout(() => {
-      scheduleMorningNotification();
-    }, 1000);
-    return () => clearTimeout(timer);
+    // Setup scheduled notifications on mount
+    scheduleMorningNotification();
   }, []);
 
   useEffect(() => {
@@ -819,75 +644,9 @@ const App: React.FC = () => {
     return () => { isMounted.current = false; };
   }, [showOnboarding, currentLanguage, handleInteraction]);
 
-  // UI Helpers
-  const getBackgroundStyle = () => {
-    const bg = bunny.customization?.background;
-    switch (bg) {
-      case 'garden':
-        return 'bg-gradient-to-b from-green-400 via-emerald-500 to-teal-900';
-      case 'space':
-        return 'bg-gradient-to-b from-slate-950 via-purple-950 to-black';
-      case 'beach':
-        return 'bg-gradient-to-b from-sky-400 via-blue-200 to-amber-100';
-      case 'underwater':
-        return 'bg-gradient-to-b from-cyan-600 via-blue-700 to-indigo-900';
-      default:
-        return 'bg-[#1e1e1e]';
-    }
-  };
-
-  const renderBackgroundElements = () => {
-    const bg = bunny.customization?.background;
-    if (bg === 'space') {
-      return (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-30">
-          {[...Array(20)].map((_, i) => (
-            <div 
-              key={i} 
-              className="absolute bg-white rounded-full animate-pulse"
-              style={{
-                width: Math.random() * 3 + 'px',
-                height: Math.random() * 3 + 'px',
-                top: Math.random() * 100 + '%',
-                left: Math.random() * 100 + '%',
-                animationDelay: Math.random() * 5 + 's'
-              }}
-            />
-          ))}
-        </div>
-      );
-    }
-    if (bg === 'underwater') {
-      return (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
-          {[...Array(10)].map((_, i) => (
-            <motion.div 
-              key={i} 
-              className="absolute bg-white/40 rounded-full"
-              initial={{ y: '110%', x: Math.random() * 100 + '%' }}
-              animate={{ y: '-10%' }}
-              transition={{
-                duration: Math.random() * 10 + 10,
-                repeat: Infinity,
-                ease: "linear",
-                delay: Math.random() * 20
-              }}
-              style={{
-                width: Math.random() * 20 + 10 + 'px',
-                height: Math.random() * 20 + 10 + 'px',
-              }}
-            />
-          ))}
-        </div>
-      );
-    }
-    return null;
-  };
-
   // UI
   return (
-    <div className={`min-h-screen ${getBackgroundStyle()} text-white flex flex-col transition-all duration-1000 relative overflow-hidden`}>
-      {renderBackgroundElements()}
+    <div className="min-h-screen bg-[#1e1e1e] text-white flex flex-col">
       {showOnboarding ? (
         <OnboardingScreen language={currentLanguage} onComplete={handleOnboardingComplete} />
       ) : (
@@ -898,30 +657,6 @@ const App: React.FC = () => {
                className="flex flex-nowrap overflow-x-auto gap-5 px-6 py-3 scrollbar-hide w-full items-center touch-pan-x whitespace-nowrap"
              >
                 <button 
-                  onClick={() => {
-                    setIsProcessing(false);
-                    setShowCompanionMenu(true);
-                  }} 
-                  className="p-2 bg-purple-600/80 rounded-full hover:bg-purple-700 transition-all shadow-lg text-xl flex-shrink-0 w-12 h-12 flex items-center justify-center"
-                  title={isHebrew ? 'החבר שלי' : 'My Companion'}
-                >
-                  ❤️
-                </button>
-                <button 
-                  onClick={() => setShowEmotionalHub(true)} 
-                  className="p-2 bg-pink-600/80 rounded-full hover:bg-pink-700 transition-all shadow-lg text-xl flex-shrink-0 w-12 h-12 flex items-center justify-center"
-                  title={isHebrew ? 'יומן רגשות' : 'Emotional Hub'}
-                >
-                  🎭
-                </button>
-                <button 
-                  onClick={() => setShowTherapyMissions(true)} 
-                  className="p-2 bg-indigo-500/80 rounded-full hover:bg-indigo-600 transition-all shadow-lg text-xl flex-shrink-0 w-12 h-12 flex items-center justify-center"
-                  title={isHebrew ? 'משימות ריפוי' : 'Therapy Missions'}
-                >
-                  🎯
-                </button>
-                <button 
                   onClick={() => setShowSettings(true)} 
                   className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-all shadow-lg flex-shrink-0 w-12 h-12 flex items-center justify-center"
                   title={translate('customize', currentLanguage)}
@@ -929,10 +664,7 @@ const App: React.FC = () => {
                   ⚙️
                 </button>
                 <button 
-                  onClick={() => {
-                    setIsProcessing(false);
-                    setShowBackgroundMusic(true);
-                  }} 
+                  onClick={() => setShowBackgroundMusic(true)} 
                   className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-all shadow-lg flex-shrink-0 w-12 h-12 flex items-center justify-center"
                   title={translate('music', currentLanguage)}
                 >
@@ -953,7 +685,7 @@ const App: React.FC = () => {
                   📊
                 </button>
                 <button 
-                  onClick={() => setShowProgressHub(true)} 
+                  onClick={() => setShowWeeklyAlbum(true)} 
                   className="p-2 bg-blue-500/80 rounded-full hover:bg-blue-600 transition-all shadow-lg text-xl flex-shrink-0 w-12 h-12 flex items-center justify-center"
                   title={translate('achievements', currentLanguage)}
                 >
@@ -987,20 +719,6 @@ const App: React.FC = () => {
                 >
                   📸
                 </button>
-                <button 
-                  onClick={() => setShowSelfExpressionStudio(true)} 
-                  className="p-2 bg-pink-400/80 rounded-full hover:bg-pink-500 transition-all shadow-lg text-xl flex-shrink-0 w-12 h-12 flex items-center justify-center"
-                  title={isHebrew ? 'סטודיו לביטוי עצמי' : 'Expression Studio'}
-                >
-                  🎨
-                </button>
-                <button 
-                  onClick={() => setShowPsychoeducation(true)} 
-                  className="p-2 bg-emerald-500/80 rounded-full hover:bg-emerald-600 transition-all shadow-lg text-xl flex-shrink-0 w-12 h-12 flex items-center justify-center"
-                  title={isHebrew ? 'לומדים רגשות' : 'Learning Emotions'}
-                >
-                  📖
-                </button>
              </div>
           </div>
 
@@ -1010,42 +728,25 @@ const App: React.FC = () => {
               <BunnyStatus bunny={bunny} language={currentLanguage} />
             </div>
 
-            {/* 1. Bunny Avatar Section - Flexible */}
-            <div className="flex-1 min-h-0 flex items-center justify-center py-1 relative">
-              <div className="transform scale-90 sm:scale-100">
-                <BunnyLottie 
-                  mood={bunny.currentEmotion} 
-                  customization={bunny.customization}
-                />
-              </div>
-              
-              {/* Music Timer Floating Overlay */}
-              {musicSleepTimer !== null && musicSleepTimer > 0 && (
-                <motion.div 
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="absolute top-4 right-4 bg-purple-600/80 backdrop-blur-md text-white px-3 py-1.5 rounded-2xl shadow-lg border border-white/20 flex items-center gap-2 z-20 cursor-pointer"
-                  onClick={() => setShowBackgroundMusic(true)}
-                >
-                  <span className="text-sm">🎶</span>
-                  <span className="font-mono text-xs font-bold">
-                    {Math.floor(musicSleepTimer)} דק׳
-                  </span>
-                </motion.div>
-              )}
+            {/* 1. Bunny Avatar Section */}
+            <div className="flex-shrink-0 py-1">
+              <BunnyLottie 
+                mood={bunny.currentEmotion} 
+                customization={bunny.customization}
+              />
             </div>
 
-            {/* 2. Chat History Section - Scrollable & Fixed Height Screen */}
-            <div className="h-44 bg-black/40 rounded-3xl p-4 overflow-y-auto space-y-3 border-2 border-white/10 shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)] relative flex-shrink-0 backdrop-blur-sm">
-              {safeChatHistory.length === 0 ? (
+            {/* 2. Chat History Section - Scrollable */}
+            <div className="flex-1 bg-black/30 rounded-3xl p-4 overflow-y-auto space-y-3 min-h-[120px] border border-white/10 shadow-inner relative">
+              {chatHistory.length === 0 ? (
                 <div className="text-center text-white/30 my-auto italic py-10">
                   {translate('bunnyWaiting', currentLanguage)}
                 </div>
               ) : (
                 <div className="flex flex-col space-y-4 pb-2">
-                  {safeChatHistory.map((msg, index) => {
+                  {chatHistory.map((msg, index) => {
                     const isLatestBotMessage = msg.sender === 'bot' && 
-                      index === safeChatHistory.length - 1;
+                      index === chatHistory.length - 1;
                     
                     return (
                       <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}>
@@ -1055,7 +756,18 @@ const App: React.FC = () => {
                             : 'bg-white text-gray-800 rounded-tl-none border-b-4 border-gray-200'
                         }`}>
                           <p className="text-[15px] font-medium leading-relaxed">{msg.text}</p>
-                          {/* Removed ResponseButtons from here as they were redundant and didn't advance logic */}
+                          {isLatestBotMessage && !isProcessing && (
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                               <ResponseButtons 
+                                 onSelect={(response) => handleInteraction('chat', response)} 
+                                 questionType={
+                                   msg.text.includes('מה מתחשק לך לעשות?') 
+                                     ? 'quiet' 
+                                     : msg.text.includes('?') ? 'general' : 'emotion'
+                                 } 
+                               />
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1082,49 +794,25 @@ const App: React.FC = () => {
                 language={currentLanguage}
                 disabled={isProcessing}
                 onAction={(action) => handleInteraction(action)}
-                onFeedClick={() => { setIsProcessing(false); setShowFoodSelector(true); }}
-                onPlayClick={() => { setIsProcessing(false); setShowGameSelector(true); }}
-                onHugClick={() => { setIsProcessing(false); setShowHugSelector(true); }}
-                onBreathingClick={() => { setIsProcessing(false); setShowBreathingExercise(true); }}
+                onFeedClick={() => setShowFoodSelector(true)}
+                onPlayClick={() => setShowGameSelector(true)}
+                onHugClick={() => setShowHugSelector(true)}
+                onBreathingClick={() => setShowBreathingExercise(true)}
                 onGratitudeClick={() => {
-                  setIsProcessing(false);
                   setShowGratitudeSticker(true);
                   handleInteraction('gratitude_start');
                 }}
                 onFriendshipClick={() => {
-                  setIsProcessing(false);
                   setShowFriendshipSticker(true);
                   handleInteraction('friendship_start');
                 }}
                 onCuriosityClick={() => {
-                  setIsProcessing(false);
                   setShowCuriosityClub(true);
                   handleInteraction('curiosity_start');
                 }}
                 onHelperClick={() => {
-                  setIsProcessing(false);
                   setShowLittleHelper(true);
                   handleInteraction('helper_start');
-                }}
-                onMusicClick={() => {
-                  setIsProcessing(false); 
-                  setShowBackgroundMusic(true);
-                  handleInteraction('music_picker_open');
-                }}
-                onBedtimeStoryClick={() => {
-                  setIsProcessing(false);
-                  setShowBedtimeStory(true);
-                  handleInteraction('bedtime_story_start');
-                }}
-                onHealthyPlateClick={() => {
-                  setIsProcessing(false);
-                  setShowHealthyPlate(true);
-                  handleInteraction('healthy_plate_open');
-                }}
-                onWaterBuddyClick={() => {
-                  setIsProcessing(false);
-                  setShowWaterBuddy(true);
-                  handleInteraction('water_buddy_open');
                 }}
               />
             </div>
@@ -1156,13 +844,6 @@ const App: React.FC = () => {
                     setTimeout(() => {
                       handleInteraction('all_tasks_done', translate('allTasksCompleted', currentLanguage));
                     }, 1500);
-
-                    // Schedule recommendation for bedtime/relaxation
-                    scheduleRecommendationNotification(
-                      currentLanguage === Language.HEBREW ? "סיימת את כל המשימות! ✨" : "All Tasks Completed! ✨",
-                      currentLanguage === Language.HEBREW ? "זה זמן מעולה להקשיב לסיפור לפני השינה עם הארנב 📚" : "Great time to listen to a bedtime story with the Bunny 📚",
-                      120 // 2 hours later
-                    );
                   }
                   }}
                 />
@@ -1178,70 +859,15 @@ const App: React.FC = () => {
       )}
       {showSettings && (
         <Settings 
-          onFullReset={handleFullReset}
           language={currentLanguage} 
           onClose={() => setShowSettings(false)} 
           onSettingsChange={handleSettingsChange} 
           onEmergencyReset={handleEmergencyReset}
-          onLanguageChange={(lang) => {
-            setCurrentLanguage(lang);
-            localStorage.setItem('emotimate_language', lang);
-          }}
-          onOpenAITTest={() => {
-            setShowSettings(false);
-            setShowAITTest(true);
-          }}
-          onOpenAITReport={() => {
-            setShowSettings(false);
-            setShowAITReport(true);
-          }}
+          onFullReset={handleFullReset}
         />
       )}
-
-      <AnimatePresence>
-        {showHugAnimation && (
-          <UnityStyleHugAnimation onComplete={() => setShowHugAnimation(false)} />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showAITTest && (
-          <AITFrequencyTest 
-            language={currentLanguage}
-            onClose={() => setShowAITTest(false)}
-            onComplete={(results) => {
-              localStorage.setItem('emotimate_ait_results', JSON.stringify(results));
-              handleInteraction('ait_test_complete');
-              
-              const newLog: CalmLog = {
-                timestamp: new Date().toISOString(),
-                duration: 0,
-                type: 'therapy_mission',
-                label: 'Auditory Sensitivity Test',
-                activity: 'ait_test'
-              };
-              setCalmLogs(prev => [...prev, newLog]);
-            }}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showAITReport && (
-          <AITReportScreen 
-            language={currentLanguage}
-            onClose={() => setShowAITReport(false)}
-          />
-        )}
-      </AnimatePresence>
       {showRewardAnimation && (
-        <RewardAnimation 
-          points={showRewardAnimation.points} 
-          taskName={showRewardAnimation.taskName} 
-          onComplete={() => setShowRewardAnimation(null)} 
-          language={currentLanguage} 
-          lowVisualOverload={appSettings.lowVisualOverload}
-        />
+        <RewardAnimation points={showRewardAnimation.points} taskName={showRewardAnimation.taskName} onComplete={() => setShowRewardAnimation(null)} language={currentLanguage} />
       )}
       
       {/* Interaction Modals */}
@@ -1283,7 +909,6 @@ const App: React.FC = () => {
               onSelect={(hug) => {
                 handleInteraction('hug', hug);
                 setShowHugSelector(false);
-                setShowHugAnimation(true);
               }} 
               onClose={() => setShowHugSelector(false)} 
             />
@@ -1297,24 +922,6 @@ const App: React.FC = () => {
           onClose={() => setShowBreathingExercise(false)} 
         />
       )}
-
-      {showHealthyPlate && (
-        <HealthyPlate
-          language={currentLanguage}
-          onClose={() => setShowHealthyPlate(false)}
-          onReward={(pts) => setRewards(prev => ({ ...prev, totalPoints: prev.totalPoints + pts }))}
-          onAction={(text) => addMessage('bot', text)}
-        />
-      )}
-
-      {showWaterBuddy && (
-        <WaterBuddy
-          language={currentLanguage}
-          onClose={() => setShowWaterBuddy(false)}
-          onDrink={() => setRewards(prev => ({ ...prev, totalPoints: prev.totalPoints + 2 }))}
-          onAction={(text) => addMessage('bot', text)}
-        />
-      )}
       
       {/* Background Systems */}
       <AudioPlayer 
@@ -1326,18 +933,16 @@ const App: React.FC = () => {
         onComplete={() => setSoundTrigger(null)} 
         volume={isQuietMode ? 0.1 : (appSettings.soundVolume / 300)} 
       />
-      <BackgroundMusic 
-        language={currentLanguage} 
-        onClose={() => setShowBackgroundMusic(false)} 
-        show={showBackgroundMusic}
-        isQuietMode={isQuietMode}
-        isAROpen={showUnityAR}
-        isStoryPlaying={isBedtimeStoryPlaying}
-        sleepTimer={musicSleepTimer}
-        onStartSleepTimer={(mins) => setMusicSleepTimer(mins)}
-        onSelectTrack={handleLogMusicChoice}
-      />
-      
+      {showBackgroundMusic && (
+        <BackgroundMusic 
+          language={currentLanguage} 
+          onClose={() => setShowBackgroundMusic(false)} 
+          show={showBackgroundMusic}
+          isQuietMode={isQuietMode}
+          isAROpen={showUnityAR}
+        />
+      )}
+
       {/* New Overlays */}
       <AnimatePresence>
         {showCleanupTime && (
@@ -1571,70 +1176,6 @@ const App: React.FC = () => {
       </AnimatePresence>
 
       <AnimatePresence>
-        {showPsychoeducation && (
-          <Psychoeducation
-            language={currentLanguage}
-            onClose={() => setShowPsychoeducation(false)}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showSelfExpressionStudio && (
-          <SelfExpressionStudio 
-            language={currentLanguage}
-            onClose={() => setShowSelfExpressionStudio(false)}
-            bunny={bunny}
-            onUpdateBunny={(customization) => setBunny(prev => ({ ...prev, customization: { ...prev.customization, ...customization } }))}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showProgressHub && (
-          <ProgressHub 
-            language={currentLanguage}
-            onClose={() => setShowProgressHub(false)}
-            rewardState={rewards}
-            emotionalPoints={emotionalPoints}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showCompanionMenu && (
-          <CompanionMenu
-            language={currentLanguage}
-            onClose={() => setShowCompanionMenu(false)}
-            onSelectAction={(action) => handleInteraction(action)}
-            bunny={bunny}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showEmotionalHub && (
-          <EmotionalHub 
-            language={currentLanguage}
-            onClose={() => setShowEmotionalHub(false)}
-            onLogEmotion={handleLogEmotion}
-            logs={calmLogs}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showTherapyMissions && (
-          <TherapyMissions 
-            language={currentLanguage}
-            onClose={() => setShowTherapyMissions(false)}
-            onCompleteMission={handleCompleteTherapyMission}
-            unlockedMissions={unlockedMissions}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
         {showStoryTime && (
           <StoryTime 
             language={currentLanguage}
@@ -1651,19 +1192,6 @@ const App: React.FC = () => {
                 handleInteraction(`experience_${id}`);
               }
             }}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showBedtimeStory && (
-          <BedtimeStory
-            language={currentLanguage}
-            onClose={() => {
-              setShowBedtimeStory(false);
-              setIsBedtimeStoryPlaying(false);
-            }}
-            onStartStory={() => setIsBedtimeStoryPlaying(true)}
           />
         )}
       </AnimatePresence>

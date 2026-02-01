@@ -1,11 +1,8 @@
 export enum Language {
   HEBREW = 'he',
   ENGLISH = 'en',
-  RUSSIAN = 'ru',
-  ARABIC = 'ar'
+  RUSSIAN = 'ru'
 }
-
-export type AgeGroup = '0-3' | '3-6' | '6-9' | '9-12' | '12+';
 
 export enum Emotion {
   HAPPY = 'שמח',
@@ -80,7 +77,6 @@ export interface UserProfile {
   preferredMusic: string;
   favoriteFoods: string[];
   recentEmotionalTrends: string[];
-  therapyProgress?: { [missionId: string]: number };
 }
 
 export interface ChatMessage {
@@ -125,37 +121,15 @@ export interface AudioProfile {
   frequencySensitivityMap?: { [frequency: string]: number }; // Detailed sensitivity per frequency
 }
 
-export interface TherapyMission {
-  id: string;
-  titleHe: string;
-  titleEn: string;
-  descriptionHe: string;
-  descriptionEn: string;
-  type: 'regulation' | 'breathing' | 'counting' | 'focus';
-  points: number;
-  unlocked: boolean;
-  completedCount: number;
-  icon: string;
-}
-
 export interface CalmLog {
   timestamp: string;
   duration: number;
-  type?: 'calm' | 'daily_wrap_up' | 'story_time_activity' | 'task_completion' | 'emotion_check' | 'therapy_mission' | 'music_choice';
-  mood?: 'happy' | 'okay' | 'hard' | 'sad' | 'angry' | 'excited' | 'tired' | 'calm' | 'frustrated' | 'proud';
+  type?: 'calm' | 'daily_wrap_up' | 'story_time_activity' | 'task_completion';
+  mood?: 'happy' | 'okay' | 'hard';
   activity?: string;
   label?: string;
   taskId?: string;
   taskLabel?: string;
-  notes?: string; // Icon IDs for journal
-}
-
-export interface AITResult {
-  frequency: number;
-  response: 'happy' | 'neutral' | 'unpleasant';
-  timestamp: string;
-  sharpness?: number;
-  vibration?: number;
 }
 
 export interface Photo {
