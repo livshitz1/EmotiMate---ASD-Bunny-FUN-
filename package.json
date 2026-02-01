@@ -1,22 +1,91 @@
 {
-  "name": "emotimate---ארנב-הזמן-שלי",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "name": "emotimate",
+  "productName": "EmotiMate - ארנב הזמן שלי",
+  "version": "1.0.0",
+  "description": "אפליקציית טמגוצ'י אינטראקטיבית לניהול זמן ורגשות",
+  "main": "electron/main.cjs",
   "scripts": {
+    "start": "npm run dev",
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:dev": "concurrently \"npm run dev\" \"sleep 3 && electron .\"",
+    "electron:build": "npm run build && electron-builder",
+    "electron:build:mac": "npm run build && electron-builder --mac",
+    "capacitor:init": "npx cap init",
+    "capacitor:add:ios": "npm run build && npx cap add ios",
+    "capacitor:add:android": "npm run build && npx cap add android",
+    "capacitor:sync": "npm run build && npx cap sync",
+    "capacitor:sync:ios": "npm run build && npx cap sync ios",
+    "capacitor:sync:android": "npm run build && npx cap sync android",
+    "capacitor:open:ios": "npx cap open ios",
+    "capacitor:open:android": "npx cap open android",
+    "ios:build": "npm run capacitor:sync:ios && npm run capacitor:open:ios",
+    "android:build": "npm run capacitor:sync:android && npm run capacitor:open:android"
   },
   "dependencies": {
-    "react-dom": "^19.2.3",
+    "@capacitor/android": "^8.0.1",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/camera": "^8.0.0",
+    "@capacitor/cli": "^8.0.1",
+    "@capacitor/core": "^8.0.1",
+    "@capacitor/geolocation": "^8.0.0",
+    "@capacitor/haptics": "^8.0.0",
+    "@capacitor/ios": "^8.0.1",
+    "@capacitor/keyboard": "^8.0.0",
+    "@capacitor/local-notifications": "^8.0.0",
+    "@capacitor/share": "^8.0.0",
+    "@capacitor/status-bar": "^8.0.0",
+    "@capgo/capacitor-pedometer": "^8.0.11",
+    "@emotion/is-prop-valid": "^1.4.0",
+    "@google/genai": "^1.37.0",
+    "@google/model-viewer": "^4.1.0",
+    "@viro-community/react-viro": "^2.41.1",
+    "axios": "^1.13.4",
+    "capacitor-voice-recorder": "^7.0.6",
+    "framer-motion": "^12.29.2",
+    "html2canvas": "^1.4.1",
+    "lottie-react": "^2.4.1",
+    "prompts": "^2.4.2",
     "react": "^19.2.3",
-    "@google/genai": "^1.37.0"
+    "react-dom": "^19.2.3"
   },
   "devDependencies": {
+    "@rolldown/pluginutils": "^1.0.0-rc.2",
+    "@types/html2canvas": "^0.5.35",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vite-plugin-static-copy": "^3.2.0",
+    "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "com.emotimate.app",
+    "productName": "EmotiMate",
+    "mac": {
+      "category": "public.app-category.lifestyle",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.icns"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*.cjs",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "build"
+    }
   }
 }
