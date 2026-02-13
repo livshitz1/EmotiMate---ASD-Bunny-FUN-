@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BunnyState, Emotion, ScheduleItem, TimeOfDay, ChatMessage, RewardState, PetType, Language, AudioProfile } from './types';
+import { BunnyState, Emotion, ScheduleItem, TimeOfDay, ChatMessage, RewardState, PetType, Language, AudioProfile, DiagnosticResult, DiagnosticModuleId } from './types';
 import { translate } from './i18n/translations';
 import { INITIAL_BUNNY_STATE, INITIAL_SCHEDULE, INITIAL_REWARD_STATE, ACHIEVEMENTS } from './constants';
 import { generateEmotiMateResponse, generateBunnyImage } from './services/geminiService';
@@ -55,9 +55,15 @@ import { StickerOverlay } from './components/StickerOverlay';
 import WaterBuddy from './components/WaterBuddy';
 import KissAnimation from './components/KissAnimation';
 import BunnyExperience from './components/BunnyExperience';
+import DiagnosticModuleRunner from './components/DiagnosticModuleRunner';
 import { scheduleMorningNotification } from './utils/scheduleNotification';
 
 const App: React.FC = () => {
+  const [currentLanguage, setCurrentLanguage] = useState<Language>(() => {
+    const saved = localStorage.getItem('emotimate_language');
+    return (saved as Language) || Language.HEBREW;
+  });
+
   // Global definitions for legacy components or those missing imports
   useEffect(() => {
     (window as any).isHebrew = currentLanguage === Language.HEBREW;
@@ -107,18 +113,30 @@ const App: React.FC = () => {
   const [soundTrigger, setSoundTrigger] = useState<'task_complete' | 'achievement' | 'points' | null>(null);
   const [bunnyAnimation, setBunnyAnimation] = useState<'idle' | 'happy' | 'sad' | 'excited' | 'sleepy' | 'eating' | 'playing' | 'relaxing' | 'task_completed' | 'sleeping_in_bed' | 'dancing' | undefined>(undefined);
   
-  const [currentLanguage, setCurrentLanguage] = useState<Language>(() => {
-    const saved = localStorage.getItem('emotimate_language');
-    return (saved as Language) || Language.HEBREW;
-  });
-
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => !localStorage.getItem('emotimate_onboarding_completed'));
   const [showWelcomeMessage, setShowWelcomeMessage] = useState<boolean>(() => !localStorage.getItem('emotimate_welcome_seen') && !!localStorage.getItem('emotimate_onboarding_completed'));
   const [showTimeBlindnessExplanation, setShowTimeBlindnessExplanation] = useState<boolean>(false);
   const [showRewardAnimation, setShowRewardAnimation] = useState<{ points: number; taskName: string; onComplete?: () => void } | null>(null);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [showBackgroundMusic, setShowBackgroundMusic] = useState<boolean>(false);
+  const [showHealthyPlate, setShowHealthyPlate] = useState<boolean>(false);
+  const [showWaterBuddy, setShowWaterBuddy] = useState<boolean>(false);
+  const [showDiagnosticMenu, setShowDiagnosticMenu] = useState<boolean>(false);
+  const [activeDiagnosticModule, setActiveDiagnosticModule] = useState<DiagnosticModuleId | null>(null);
+  const DIAGNOSTIC_RESULTS_KEY = 'emotimate_diagnostic_results';
+  const [diagnosticResults, setDiagnosticResults] = useState<DiagnosticResult[]>(() => {
+    try {
+      const raw = localStorage.getItem(DIAGNOSTIC_RESULTS_KEY);
+      return raw ? (JSON.parse(raw) as DiagnosticResult[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [diagnosticScreenRecording, setDiagnosticScreenRecording] = useState(false);
+  const [diagnosticScreenRecordMs, setDiagnosticScreenRecordMs] = useState<number | null>(null);
+  const [diagnosticScreenRecordError, setDiagnosticScreenRecordError] = useState<string>('');
   const [showFoodSelector, setShowFoodSelector] = useState<boolean>(false);
+  const [feedCelebration, setFeedCelebration] = useState<string | null>(null);
   const [showGameSelector, setShowGameSelector] = useState<boolean>(false);
   const [showHugSelector, setShowHugSelector] = useState<boolean>(false);
   const [showBreathingExercise, setShowBreathingExercise] = useState<boolean>(false);
@@ -219,12 +237,25 @@ const App: React.FC = () => {
   const chatHistoryRef = useRef<ChatMessage[]>(chatHistory);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const menuScrollRef = useRef<HTMLDivElement>(null);
+  const diagnosticScreenRecorderRef = useRef<MediaRecorder | null>(null);
+  const diagnosticScreenStreamRef = useRef<MediaStream | null>(null);
+  const diagnosticScreenChunksRef = useRef<Blob[]>([]);
+  const diagnosticScreenStartedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [chatHistory, isProcessing]);
+
+  useEffect(() => {
+    if (!menuScrollRef.current) return;
+    if (currentLanguage === Language.HEBREW) {
+      menuScrollRef.current.scrollLeft = menuScrollRef.current.scrollWidth;
+      return;
+    }
+    menuScrollRef.current.scrollLeft = 0;
+  }, [currentLanguage, showOnboarding]);
 
   // --- Audio Initialization ---
   useEffect(() => {
@@ -248,11 +279,22 @@ const App: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      diagnosticScreenStreamRef.current?.getTracks().forEach((tr) => tr.stop());
+      diagnosticScreenStreamRef.current = null;
+      diagnosticScreenRecorderRef.current = null;
+    };
+  }, []);
+
   useEffect(() => { bunnyRef.current = bunny; }, [bunny]);
   useEffect(() => { chatHistoryRef.current = chatHistory; }, [chatHistory]);
   useEffect(() => { localStorage.setItem('emotimate_rewards', JSON.stringify(rewards)); }, [rewards]);
   useEffect(() => { localStorage.setItem('emotimate_language', currentLanguage); }, [currentLanguage]);
   useEffect(() => { localStorage.setItem('emotimate_stars', totalSelfCareCount.toString()); }, [totalSelfCareCount]);
+  useEffect(() => {
+    localStorage.setItem(DIAGNOSTIC_RESULTS_KEY, JSON.stringify(diagnosticResults));
+  }, [diagnosticResults, DIAGNOSTIC_RESULTS_KEY]);
 
   const handleShopPurchase = (item: ShopItem) => {
     setTotalSelfCareCount(prev => prev - item.price);
@@ -282,7 +324,7 @@ const App: React.FC = () => {
       let { hunger, energy, happiness } = prev;
       const act = action.toLowerCase();
 
-      if (act.includes('feed') || act.includes('carrot') || act.includes('apple') || act.includes('lettuce')) {
+      if (act.includes('feed') || act.includes('carrot') || act.includes('apple') || act.includes('lettuce') || act.includes('cucumber') || act.includes('berries') || act.includes('hay') || act.includes('pellets') || act.includes('broccoli')) {
         hunger = Math.min(100, hunger + 25);
         happiness = Math.min(100, happiness + 10);
       } else if (act.includes('play') || act.includes('ball') || act.includes('puzzle')) {
@@ -317,8 +359,31 @@ const App: React.FC = () => {
     return messageId;
   }, []);
 
+  const getFallbackBotReply = useCallback((action: string): string => {
+    const key = (action || '').toLowerCase();
+    if (currentLanguage === Language.HEBREW) {
+      if (key.includes('diagnostic')) return 'תפריט אבחון פתוח: התחלת סשן, מיפוי תדרים, ניתוח התנהגות ודוח RUO.';
+      if (key.includes('curiosity')) return 'שאלה מעולה. בוא נבדוק אותה יחד בצעד אחד קטן.';
+      if (key.includes('music')) return 'מצב מוזיקה מוכן. אפשר לבחור רצועה ולהתחיל.';
+      if (key.includes('feed')) return 'כל הכבוד! הבאני שמח אחרי האכלה.';
+      return 'אני כאן איתך. ננסה עכשיו פעולה קטנה אחת.';
+    }
+    if (currentLanguage === Language.ENGLISH) {
+      if (key.includes('diagnostic')) return 'Diagnostics menu is ready: session, frequency mapping, behavior analysis, RUO report.';
+      if (key.includes('curiosity')) return 'Great question. Let us explore it one small step at a time.';
+      if (key.includes('music')) return 'Music mode is ready. Pick a track to start.';
+      if (key.includes('feed')) return 'Great job. The bunny is happier after feeding.';
+      return 'I am here with you. Let us take one small step now.';
+    }
+    if (key.includes('diagnostic')) return 'Меню диагностики готово: сессия, карта частот, анализ поведения, RUO-отчет.';
+    if (key.includes('curiosity')) return 'Отличный вопрос. Давай разберем его шаг за шагом.';
+    if (key.includes('music')) return 'Музыкальный режим готов. Выберите трек и начните.';
+    if (key.includes('feed')) return 'Отлично. Кролик стал счастливее после кормления.';
+    return 'Я рядом. Давай сделаем один маленький шаг.';
+  }, [currentLanguage]);
+
   const handleInteraction = useCallback(async (actionType: string, customInput?: string) => {
-    if (isProcessing) return;
+    if (isProcessing && actionType === 'chat') return;
     setIsProcessing(true);
 
     // Identify the actual content to display
@@ -331,6 +396,11 @@ const App: React.FC = () => {
         'water': 'מים 💧',
         'lettuce': 'חסה 🥬',
         'apple': 'תפוח 🍎',
+        'cucumber': 'מלפפון 🥒',
+        'berries': 'פירות יער 🫐',
+        'hay': 'חציר 🌾',
+        'pellets': 'כופתיות 🟤',
+        'broccoli': 'ברוקולי 🥦',
         'ball': 'כדור ⚽',
         'puzzle': 'פאזל 🧩',
         'hide_and_seek': 'מחבואים 🫣',
@@ -342,7 +412,12 @@ const App: React.FC = () => {
         'feed': 'להאכיל 🥕',
         'play': 'לשחק ⚽',
         'hug': 'לחבק ❤️',
-        'breathing': 'נשימה 🧘'
+        'breathing': 'נשימה 🧘',
+        'diagnostic_menu': 'אבחון 🩺',
+        'music_open': 'מוזיקה 🎵',
+        'healthy_plate_open': 'צלחת 🥦',
+        'water_buddy_open': 'מים 💧',
+        'bedtime_story_open': 'סיפור לפני השינה 📖'
       };
       
       if (translations[contentToDisplay]) {
@@ -361,33 +436,36 @@ const App: React.FC = () => {
       
       // We pass the RAW actionType/customInput to Gemini so it knows the intent, 
       // but use the translated text for the chat display.
-      const textResponse = await generateEmotiMateResponse(
-        customInput || actionType, 
-        stateDescription, 
-        recentHistory,
-        undefined, // contextSummary
-        undefined, // userMemory
-        rewards,
-        isCalmMode,
-        undefined, // calmSessionsCount
-        isNightMode,
-        isMorningMode,
-        false, // isGoodbye
-        isPickUpMode,
-        false, // isHandshakeCompleted
-        showBathTime,
-        undefined, // storyTimeActivity
-        undefined, // firstTask
-        undefined, // stepsProgress
-        false, // isParentDashboard
-        undefined, // currentSpecialMission
-        isBunnySleeping,
-        showBedtimeStory,
-        undefined, // currentTemp
-        undefined, // weatherItem
-        false, // isMealTime
-        isQuietMode
-      );
+      const textResponse = await Promise.race<string>([
+        generateEmotiMateResponse(
+          String(customInput || actionType || ''),
+          stateDescription, 
+          recentHistory,
+          undefined, // contextSummary
+          undefined, // userMemory
+          rewards,
+          isCalmMode,
+          undefined, // calmSessionsCount
+          isNightMode,
+          isMorningMode,
+          false, // isGoodbye
+          isPickUpMode,
+          false, // isHandshakeCompleted
+          showBathTime,
+          undefined, // storyTimeActivity
+          undefined, // firstTask
+          undefined, // stepsProgress
+          false, // isParentDashboard
+          undefined, // currentSpecialMission
+          isBunnySleeping,
+          showBedtimeStory,
+          undefined, // currentTemp
+          undefined, // weatherItem
+          false, // isMealTime
+          isQuietMode
+        ),
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('AI_TIMEOUT')), 12000))
+      ]);
       const petType = bunnyRef.current.customization?.petType || 'bunny';
       
       const [imageUrl] = await Promise.all([
@@ -396,14 +474,178 @@ const App: React.FC = () => {
 
       if (isMounted.current) {
         if (imageUrl) setCurrentImage(imageUrl);
-        addMessage('bot', textResponse, undefined, imageUrl || undefined);
+        addMessage('bot', (textResponse || '').trim() || getFallbackBotReply(actionType), undefined, imageUrl || undefined);
       }
     } catch (e) {
       console.error("Interaction failed", e);
+      if (isMounted.current) addMessage('bot', getFallbackBotReply(actionType));
     } finally {
       if (isMounted.current) setIsProcessing(false);
     }
-  }, [isProcessing, addMessage]);
+  }, [isProcessing, addMessage, getFallbackBotReply]);
+
+  const startDiagnosticScreenRecording = useCallback(async () => {
+    setDiagnosticScreenRecordError('');
+    if (diagnosticScreenRecording) return;
+
+    if (!navigator.mediaDevices?.getDisplayMedia || !('MediaRecorder' in window)) {
+      setDiagnosticScreenRecordError(currentLanguage === Language.HEBREW
+        ? 'הקלטת מסך לא זמינה במכשיר זה. אפשר להשתמש במקליט המסך המובנה של אנדרואיד.'
+        : currentLanguage === Language.ENGLISH
+        ? 'Screen recording is not available on this device. Use Android built-in recorder.'
+        : 'Запись экрана недоступна. Используйте встроенный рекордер Android.');
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      diagnosticScreenStreamRef.current = stream;
+      diagnosticScreenChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      diagnosticScreenRecorderRef.current = recorder;
+      recorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) diagnosticScreenChunksRef.current.push(ev.data);
+      };
+      recorder.start();
+      diagnosticScreenStartedAtRef.current = Date.now();
+      setDiagnosticScreenRecordMs(null);
+      setDiagnosticScreenRecording(true);
+    } catch (err) {
+      console.error('Screen recording failed', err);
+      setDiagnosticScreenRecordError(currentLanguage === Language.HEBREW
+        ? 'לא ניתן להתחיל הקלטת מסך כרגע.'
+        : currentLanguage === Language.ENGLISH
+        ? 'Unable to start screen recording now.'
+        : 'Не удалось начать запись экрана.');
+    }
+  }, [currentLanguage, diagnosticScreenRecording]);
+
+  const stopDiagnosticScreenRecording = useCallback(() => {
+    if (!diagnosticScreenRecording) return;
+
+    const startedAt = diagnosticScreenStartedAtRef.current;
+    const elapsed = startedAt ? Date.now() - startedAt : 0;
+    setDiagnosticScreenRecordMs(elapsed > 0 ? elapsed : null);
+
+    try {
+      diagnosticScreenRecorderRef.current?.stop();
+    } catch {
+      // ignore recorder stop race
+    }
+
+    const stream = diagnosticScreenStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((tr) => tr.stop());
+    }
+
+    diagnosticScreenStreamRef.current = null;
+    diagnosticScreenRecorderRef.current = null;
+    diagnosticScreenStartedAtRef.current = null;
+    setDiagnosticScreenRecording(false);
+
+    const chunks = diagnosticScreenChunksRef.current;
+    if (chunks.length > 0) {
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'emotimate-diagnostic-debug-' + Date.now() + '.webm';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    }
+  }, [diagnosticScreenRecording]);
+
+  const openDiagnosticMenu = useCallback(() => {
+    setShowDiagnosticMenu(true);
+    const intro = currentLanguage === Language.HEBREW
+      ? '🩺 תפריט אבחון נפתח. אפשר להתחיל בדיקה קצרה לפי מודולים.'
+      : currentLanguage === Language.ENGLISH
+      ? '🩺 Diagnostics menu opened. You can start a short modular screening flow.'
+      : '🩺 Меню диагностики открыто. Можно запустить короткий модульный скрининг.';
+    addMessage('bot', intro);
+  }, [addMessage, currentLanguage]);
+
+  const startDiagnosticModule = useCallback((moduleId: DiagnosticModuleId) => {
+    setShowDiagnosticMenu(false);
+    setActiveDiagnosticModule(moduleId);
+
+    const label = currentLanguage === Language.HEBREW
+      ? moduleId === 'frequency' ? 'מיפוי תדרים' :
+        moduleId === 'speech' ? 'ניתוח דיבור וקול' :
+        moduleId === 'intonation' ? 'אינטונציה רגשית' :
+        moduleId === 'responsiveness' ? 'תגובה שמיעתית' : 'פרופיל התנהגותי-חושי'
+      : currentLanguage === Language.ENGLISH
+      ? moduleId === 'frequency' ? 'Frequency Mapping' :
+        moduleId === 'speech' ? 'Speech & Voice Analysis' :
+        moduleId === 'intonation' ? 'Emotional Intonation' :
+        moduleId === 'responsiveness' ? 'Auditory Responsiveness' : 'Behavioral-Sensory Profile'
+      : moduleId === 'frequency' ? 'Карта частот' :
+        moduleId === 'speech' ? 'Анализ речи и голоса' :
+        moduleId === 'intonation' ? 'Эмоциональная интонация' :
+        moduleId === 'responsiveness' ? 'Слуховая реактивность' : 'Поведенческий сенсорный профиль';
+
+  }, [addMessage, currentLanguage]);
+
+  const handleDiagnosticResult = useCallback((result: DiagnosticResult) => {
+    setDiagnosticResults((prev) => [result, ...prev].slice(0, 200));
+  }, []);
+
+  const getDiagnosticModuleText = useCallback(() => {
+    if (!activeDiagnosticModule) return null;
+
+    if (currentLanguage === Language.HEBREW) {
+      const map = {
+        frequency: {
+          title: 'מיפוי תדרים',
+          description: 'נבדוק תגובה לתדרים שונים בצורה עדינה ובטוחה.',
+          step: 'צעד ראשון: נתחיל בתדר נמוך ובעוצמה רגועה.'
+        },
+        speech: {
+          title: 'ניתוח דיבור וקול',
+          description: 'נבחן יציבות פיץ׳, קצב דיבור ובהירות.',
+          step: 'צעד ראשון: אמור משפט קצר וברור.'
+        },
+        intonation: {
+          title: 'אינטונציה רגשית',
+          description: 'נבדוק תגובה לטון שמח, עצוב וניטרלי.',
+          step: 'צעד ראשון: השמע קטע קצר ונמדוד תגובה.'
+        },
+        responsiveness: {
+          title: 'תגובה שמיעתית',
+          description: 'נבדוק זמן תגובה, עקביות והסחות דעת.',
+          step: 'צעד ראשון: פקודה פשוטה ומדידת latency.'
+        },
+        behavior: {
+          title: 'פרופיל התנהגותי-חושי',
+          description: 'שאלון קצר להבנת רגישות לרעש, שינה וריכוז.',
+          step: 'צעד ראשון: 5 שאלות קצרות להורה.'
+        }
+      } as const;
+      return map[activeDiagnosticModule];
+    }
+
+    if (currentLanguage === Language.ENGLISH) {
+      const map = {
+        frequency: { title: 'Frequency Mapping', description: 'We check responses to different tones in a gentle, safe way.', step: 'First step: start with a low tone and calm intensity.' },
+        speech: { title: 'Speech & Voice Analysis', description: 'We assess pitch stability, speech pace, and clarity.', step: 'First step: say one short sentence clearly.' },
+        intonation: { title: 'Emotional Intonation', description: 'We check response to happy, sad, and neutral tones.', step: 'First step: play a short clip and measure reaction.' },
+        responsiveness: { title: 'Auditory Responsiveness', description: 'We assess latency, consistency, and distractibility.', step: 'First step: simple command with latency measurement.' },
+        behavior: { title: 'Behavioral-Sensory Profile', description: 'Short parent questionnaire on noise, sleep, and focus.', step: 'First step: answer 5 short parent questions.' }
+      } as const;
+      return map[activeDiagnosticModule];
+    }
+
+    const map = {
+      frequency: { title: 'Карта частот', description: 'Проверяем реакцию на разные частоты мягко и безопасно.', step: 'Первый шаг: начинаем с низкой частоты и спокойной громкости.' },
+      speech: { title: 'Анализ речи и голоса', description: 'Оцениваем стабильность тона, темп и четкость речи.', step: 'Первый шаг: произнесите одну короткую фразу.' },
+      intonation: { title: 'Эмоциональная интонация', description: 'Проверяем реакцию на радостный, грустный и нейтральный тон.', step: 'Первый шаг: воспроизвести короткий фрагмент и измерить реакцию.' },
+      responsiveness: { title: 'Слуховая реактивность', description: 'Оцениваем задержку ответа, стабильность и отвлекаемость.', step: 'Первый шаг: простая команда и замер задержки.' },
+      behavior: { title: 'Поведенческий сенсорный профиль', description: 'Короткий опрос для родителя о шуме, сне и концентрации.', step: 'Первый шаг: 5 коротких вопросов.' }
+    } as const;
+    return map[activeDiagnosticModule];
+  }, [activeDiagnosticModule, currentLanguage]);
 
   const handleOnboardingComplete = (selectedPet: PetType, audioProfile: AudioProfile, childName: string, childAge: number) => {
     setBunny(prev => ({ ...prev, customization: { ...prev.customization, petType: selectedPet } }));
@@ -655,13 +897,28 @@ const App: React.FC = () => {
              <div 
                ref={menuScrollRef}
                className="flex flex-nowrap overflow-x-auto gap-5 px-6 py-3 scrollbar-hide w-full items-center touch-pan-x whitespace-nowrap"
+               style={{ direction: currentLanguage === Language.HEBREW ? 'rtl' : 'ltr' }}
              >
+                <button
+                  onClick={openDiagnosticMenu}
+                  className="p-2 bg-emerald-600/80 rounded-full hover:bg-emerald-700 transition-all shadow-lg text-xl flex-shrink-0 w-12 h-12 flex items-center justify-center"
+                  title={currentLanguage === Language.HEBREW ? 'אבחון' : currentLanguage === Language.ENGLISH ? 'Diagnostics' : 'Диагностика'}
+                >
+                  🩺
+                </button>
                 <button 
                   onClick={() => setShowSettings(true)} 
                   className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition-all shadow-lg flex-shrink-0 w-12 h-12 flex items-center justify-center"
                   title={translate('customize', currentLanguage)}
                 >
                   ⚙️
+                </button>
+                <button 
+                  onClick={() => setShowParentDashboard(true)} 
+                  className="p-2 bg-indigo-600/80 rounded-full hover:bg-indigo-700 transition-all shadow-lg text-xl flex-shrink-0 w-12 h-12 flex items-center justify-center"
+                  title={translate('parentDashboard', currentLanguage)}
+                >
+                  📊
                 </button>
                 <button 
                   onClick={() => setShowBackgroundMusic(true)} 
@@ -676,13 +933,6 @@ const App: React.FC = () => {
                   title={translate('walk', currentLanguage)}
                 >
                   ✨
-                </button>
-                <button 
-                  onClick={() => setShowParentDashboard(true)} 
-                  className="p-2 bg-indigo-600/80 rounded-full hover:bg-indigo-700 transition-all shadow-lg text-xl flex-shrink-0 w-12 h-12 flex items-center justify-center"
-                  title={translate('parentDashboard', currentLanguage)}
-                >
-                  📊
                 </button>
                 <button 
                   onClick={() => setShowWeeklyAlbum(true)} 
@@ -798,6 +1048,22 @@ const App: React.FC = () => {
                 onPlayClick={() => setShowGameSelector(true)}
                 onHugClick={() => setShowHugSelector(true)}
                 onBreathingClick={() => setShowBreathingExercise(true)}
+                onMusicClick={() => {
+                  setShowBackgroundMusic(true);
+                  handleInteraction('music_open');
+                }}
+                onHealthyPlateClick={() => {
+                  setShowHealthyPlate(true);
+                  handleInteraction('healthy_plate_open');
+                }}
+                onWaterBuddyClick={() => {
+                  setShowWaterBuddy(true);
+                  handleInteraction('water_buddy_open');
+                }}
+                onBedtimeStoryClick={() => {
+                  setShowBedtimeStory(true);
+                  handleInteraction('bedtime_story_open');
+                }}
                 onGratitudeClick={() => {
                   setShowGratitudeSticker(true);
                   handleInteraction('gratitude_start');
@@ -860,6 +1126,7 @@ const App: React.FC = () => {
       {showSettings && (
         <Settings 
           language={currentLanguage} 
+          onLanguageChange={setCurrentLanguage}
           onClose={() => setShowSettings(false)} 
           onSettingsChange={handleSettingsChange} 
           onEmergencyReset={handleEmergencyReset}
@@ -879,6 +1146,35 @@ const App: React.FC = () => {
               onSelect={(food) => {
                 handleInteraction('feed', food);
                 setShowFoodSelector(false);
+                setSoundTrigger('points');
+                setBunnyAnimation('eating');
+                setTimeout(() => setBunnyAnimation(undefined), 1500);
+
+                const heMap: Record<string, string> = {
+                  carrot: 'גזר', water: 'מים', lettuce: 'חסה', apple: 'תפוח', cucumber: 'מלפפון', berries: 'פירות יער', hay: 'חציר', pellets: 'כופתיות', broccoli: 'ברוקולי'
+                };
+                const enMap: Record<string, string> = {
+                  carrot: 'carrot', water: 'water', lettuce: 'lettuce', apple: 'apple', cucumber: 'cucumber', berries: 'berries', hay: 'hay', pellets: 'pellets', broccoli: 'broccoli'
+                };
+                const ruMap: Record<string, string> = {
+                  carrot: 'морковь', water: 'вода', lettuce: 'салат', apple: 'яблоко', cucumber: 'огурец', berries: 'ягоды', hay: 'сено', pellets: 'гранулы', broccoli: 'брокколи'
+                };
+
+                const foodLabel = currentLanguage === Language.HEBREW
+                  ? (heMap[food] || food)
+                  : currentLanguage === Language.RUSSIAN
+                  ? (ruMap[food] || food)
+                  : (enMap[food] || food);
+
+                const msg = currentLanguage === Language.HEBREW
+                  ? `הידד! כל הכבוד! האכלת את הארנב ב-${foodLabel} 🐰`
+                  : currentLanguage === Language.RUSSIAN
+                  ? `Ура! Отлично! Вы покормили кролика: ${foodLabel} 🐰`
+                  : `Yay! Great job! You fed the bunny ${foodLabel} 🐰`;
+
+                setFeedCelebration(msg);
+                addMessage('bot', msg);
+                setTimeout(() => setFeedCelebration(null), 2200);
               }} 
               onClose={() => setShowFoodSelector(false)} 
             />
@@ -922,7 +1218,134 @@ const App: React.FC = () => {
           onClose={() => setShowBreathingExercise(false)} 
         />
       )}
-      
+      {showHealthyPlate && (
+        <HealthyPlate
+          language={currentLanguage}
+          onClose={() => setShowHealthyPlate(false)}
+          onReward={(points) => {
+            setTotalSelfCareCount(prev => prev + points);
+            setRewards(prev => ({ ...prev, totalPoints: prev.totalPoints + points, dailyPoints: prev.dailyPoints + points }));
+            setSoundTrigger('points');
+          }}
+          onAction={(text) => handleInteraction('healthy_plate_action', text)}
+          onStartAR={handleOpenAR}
+        />
+      )}
+      {showWaterBuddy && (
+        <WaterBuddy
+          language={currentLanguage}
+          onClose={() => setShowWaterBuddy(false)}
+          onDrink={(cups) => {
+            const points = Math.max(1, cups * 2);
+            setTotalSelfCareCount(prev => prev + points);
+            setRewards(prev => ({ ...prev, totalPoints: prev.totalPoints + points, dailyPoints: prev.dailyPoints + points }));
+            setSoundTrigger('points');
+          }}
+          onAction={(text) => handleInteraction('water_buddy_action', text)}
+        />
+      )}
+      {showBedtimeStory && (
+        <BedtimeStory
+          language={currentLanguage}
+          onClose={() => setShowBedtimeStory(false)}
+          onStartStory={() => handleInteraction('bedtime_story_start')}
+        />
+      )}
+      {showDiagnosticMenu && (
+        <div className="fixed inset-0 z-[1300] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl border border-emerald-100">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-black text-emerald-700">
+                {currentLanguage === Language.HEBREW ? '🩺 MeowDiagnostics' : currentLanguage === Language.ENGLISH ? '🩺 MeowDiagnostics' : '🩺 MeowDiagnostics'}
+              </h3>
+              <button
+                onClick={() => setShowDiagnosticMenu(false)}
+                className="text-gray-400 hover:text-gray-700 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              {currentLanguage === Language.HEBREW
+                ? 'בחר מודול אחד כדי להתחיל.'
+                : currentLanguage === Language.ENGLISH
+                ? 'Choose one module to start.'
+                : 'Выберите один модуль для запуска.'}
+            </p>
+            <div className="mb-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+              <div className="text-xs font-bold text-emerald-800 mb-2">
+                {currentLanguage === Language.HEBREW ? 'הקלטת מסך לדיבוג' : currentLanguage === Language.ENGLISH ? 'Screen Recording for Debug' : 'Запись экрана для отладки'}
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                {!diagnosticScreenRecording ? (
+                  <button onClick={startDiagnosticScreenRecording} className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold">
+                    {currentLanguage === Language.HEBREW ? 'התחל הקלטת מסך' : currentLanguage === Language.ENGLISH ? 'Start Screen Rec' : 'Старт записи'}
+                  </button>
+                ) : (
+                  <button onClick={stopDiagnosticScreenRecording} className="px-3 py-2 rounded-lg bg-rose-600 text-white text-xs font-bold">
+                    {currentLanguage === Language.HEBREW ? 'עצור ושמור וידאו' : currentLanguage === Language.ENGLISH ? 'Stop & Save Video' : 'Стоп и сохранить'}
+                  </button>
+                )}
+                <button onClick={() => setDiagnosticScreenRecordError('')} className="px-3 py-2 rounded-lg bg-gray-200 text-gray-700 text-xs font-bold">
+                  {currentLanguage === Language.HEBREW ? 'נקה הודעה' : currentLanguage === Language.ENGLISH ? 'Clear' : 'Очистить'}
+                </button>
+              </div>
+              <div className="text-xs text-gray-700">
+                Screen REC: {diagnosticScreenRecording ? 'ON' : 'OFF'} {diagnosticScreenRecordMs ? '| ' + Math.round(diagnosticScreenRecordMs / 1000) + 's' : ''}
+              </div>
+              {diagnosticScreenRecordError && <div className="text-xs text-rose-600 mt-1">{diagnosticScreenRecordError}</div>}
+            </div>
+            <div className="grid grid-cols-1 gap-2">
+              <button onClick={() => { startDiagnosticModule('frequency'); }} className="px-4 py-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-right">
+                {currentLanguage === Language.HEBREW ? 'מיפוי תדרים' : currentLanguage === Language.ENGLISH ? 'Frequency Mapping' : 'Карта частот'}
+              </button>
+              <button onClick={() => { startDiagnosticModule('speech'); }} className="px-4 py-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-right">
+                {currentLanguage === Language.HEBREW ? 'ניתוח דיבור וקול' : currentLanguage === Language.ENGLISH ? 'Speech & Voice Analysis' : 'Анализ речи и голоса'}
+              </button>
+              <button onClick={() => { startDiagnosticModule('intonation'); }} className="px-4 py-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-right">
+                {currentLanguage === Language.HEBREW ? 'אינטונציה רגשית' : currentLanguage === Language.ENGLISH ? 'Emotional Intonation' : 'Эмоциональная интонация'}
+              </button>
+              <button onClick={() => { startDiagnosticModule('responsiveness'); }} className="px-4 py-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-right">
+                {currentLanguage === Language.HEBREW ? 'תגובה שמיעתית' : currentLanguage === Language.ENGLISH ? 'Auditory Responsiveness' : 'Слуховая реактивность'}
+              </button>
+              <button onClick={() => { startDiagnosticModule('behavior'); }} className="px-4 py-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-right">
+                {currentLanguage === Language.HEBREW ? 'פרופיל התנהגותי-חושי' : currentLanguage === Language.ENGLISH ? 'Behavioral-Sensory Profile' : 'Поведенческий сенсорный профиль'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {activeDiagnosticModule && (
+        <DiagnosticModuleRunner
+          language={currentLanguage}
+          moduleId={activeDiagnosticModule}
+          onClose={() => setActiveDiagnosticModule(null)}
+          onBack={() => {
+            setActiveDiagnosticModule(null);
+            setShowDiagnosticMenu(true);
+          }}
+          onCompleted={() => {
+            addMessage('bot', currentLanguage === Language.HEBREW
+              ? 'מודול הושלם בהצלחה ונשמר בלוח הבקרה. אפשר לעבור למודול הבא.'
+              : currentLanguage === Language.ENGLISH
+              ? 'Module completed and saved to dashboard. You can move to the next module.'
+              : 'Модуль завершен и сохранен на панели. Можно перейти к следующему модулю.');
+            setActiveDiagnosticModule(null);
+            setShowDiagnosticMenu(true);
+          }}
+          onLog={() => undefined}
+          onResult={handleDiagnosticResult}
+        />
+      )}
+
+      {feedCelebration && (
+        <div className="fixed top-[calc(env(safe-area-inset-top)+14px)] left-1/2 -translate-x-1/2 z-[1400] px-4">
+          <div className="bg-emerald-600 text-white font-bold text-sm rounded-2xl shadow-2xl border border-emerald-300 px-4 py-3 animate-pulse">
+            {feedCelebration}
+          </div>
+        </div>
+      )}
+
       {/* Background Systems */}
       <AudioPlayer 
         volume={isQuietMode ? 0.2 : (appSettings.soundVolume / 100)}
@@ -1015,7 +1438,6 @@ const App: React.FC = () => {
             onClose={() => setShowFriendshipSticker(false)}
             onComplete={(id) => {
               handleInteraction(`friendship_select:${id}`);
-              setTimeout(() => setShowFriendshipSticker(false), 2500);
             }}
           />
         )}
@@ -1126,6 +1548,7 @@ const App: React.FC = () => {
           <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
             <ParentDashboard 
               language={currentLanguage}
+              diagnosticResults={diagnosticResults}
               onClose={() => setShowParentDashboard(false)}
               onOpenWeeklyAlbum={() => {
                 setShowParentDashboard(false);

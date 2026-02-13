@@ -132,6 +132,46 @@ export interface CalmLog {
   taskLabel?: string;
 }
 
+export type DiagnosticModuleId = 'frequency' | 'speech' | 'intonation' | 'responsiveness' | 'behavior';
+
+export interface DiagnosticResult {
+  id: string;
+  moduleId: DiagnosticModuleId;
+  timestamp: string;
+  language: Language;
+  stepIndex: number;
+  completed: boolean;
+  micPermission: 'unknown' | 'granted' | 'denied';
+  ambientDb?: number | null;
+  lastToneHz?: number | null;
+  recordingMs?: number | null;
+  behaviorAnswers?: {
+    q1?: boolean;
+    q2?: boolean;
+  };
+  speechAnswers?: {
+    heardClearly?: boolean;
+    distracted?: boolean;
+    wantsRepeat?: boolean;
+  };
+  liveFeedback?: {
+    comfortNow?: boolean;
+    distractedNow?: boolean;
+  };
+  distractionMetrics?: {
+    focusLostCount?: number;
+    hiddenCount?: number;
+    motionEvents?: number;
+    motionScoreAvg?: number;
+  };
+  preferredFrequencyHz?: number | null;
+  aversiveFrequencyHz?: number | null;
+  videoCaptureEnabled?: boolean;
+  videoCapturedMs?: number | null;
+  status?: string;
+  log: string[];
+}
+
 export interface Photo {
   id: string;
   url: string;

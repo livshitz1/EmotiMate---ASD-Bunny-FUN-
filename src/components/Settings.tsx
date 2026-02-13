@@ -5,6 +5,7 @@ import BunnySelector, { BunnyOption } from './BunnySelector';
 interface SettingsProps {
   language: Language;
   onClose: () => void;
+  onLanguageChange?: (language: Language) => void;
   onSettingsChange?: (settings: AppSettings) => void;
   onEmergencyReset?: () => void;
   onFullReset?: () => void;
@@ -25,6 +26,7 @@ export interface AppSettings {
   schoolName?: string;
   sensoryBatteryEnabled?: boolean;
   sensorySensitivityLevel?: number; // 1-10
+  bunnySpeechEnabled?: boolean;
   morningModeStartHour?: number;
   nightModeStartHour?: number;
   childNickname?: string;
@@ -55,7 +57,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   childAge: 6
 };
 
-const Settings: React.FC<SettingsProps> = ({ language, onClose, onSettingsChange, onEmergencyReset, onFullReset }) => {
+const Settings: React.FC<SettingsProps> = ({ language, onClose, onLanguageChange, onSettingsChange, onEmergencyReset, onFullReset }) => {
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('emotimate_app_settings');
     if (saved) {
@@ -97,6 +99,7 @@ const Settings: React.FC<SettingsProps> = ({ language, onClose, onSettingsChange
           cancel: 'ביטול',
           recommendationsTitle: 'המלצות על פס הזמן',
           basicSettingsTitle: 'הגדרות בסיסיות',
+          languageTitle: 'שפה',
           advancedSettingsTitle: '⚙️ הגדרות מתקדמות',
           locationTitle: '📍 הגדרות מיקום',
           sensoryTitle: '🔋 ויסות חושי',
@@ -110,6 +113,7 @@ const Settings: React.FC<SettingsProps> = ({ language, onClose, onSettingsChange
           morningHourLabel: 'שעת תחילת מצב בוקר',
           nightHourLabel: 'שעת תחילת מצב לילה',
           childNicknameLabel: 'כינוי הילד',
+          childAgeLabel: 'גיל',
           reinforcementLabel: 'חיזוק מועדף',
           sparkles: 'נצנצים',
           stars: 'כוכבים',
@@ -137,6 +141,7 @@ const Settings: React.FC<SettingsProps> = ({ language, onClose, onSettingsChange
           cancel: 'Cancel',
           recommendationsTitle: 'Timeline Recommendations',
           basicSettingsTitle: 'Basic Settings',
+          languageTitle: 'Language',
           advancedSettingsTitle: '⚙️ Advanced Settings',
           locationTitle: '📍 Location Settings',
           sensoryTitle: '🔋 Sensory',
@@ -150,6 +155,7 @@ const Settings: React.FC<SettingsProps> = ({ language, onClose, onSettingsChange
           morningHourLabel: 'Morning Mode Start Hour',
           nightHourLabel: 'Night Mode Start Hour',
           childNicknameLabel: 'Child\'s Nickname',
+          childAgeLabel: 'Age',
           reinforcementLabel: 'Favorite Reinforcement',
           sparkles: 'Sparkles',
           stars: 'Stars',
@@ -175,7 +181,29 @@ const Settings: React.FC<SettingsProps> = ({ language, onClose, onSettingsChange
           save: 'Сохранить',
           cancel: 'Отмена',
           recommendationsTitle: 'Рекомендации на временной шкале',
-          basicSettingsTitle: 'Основные настройки'
+          basicSettingsTitle: 'Основные настройки',
+          languageTitle: 'Язык',
+          advancedSettingsTitle: '⚙️ Расширенные настройки',
+          locationTitle: '📍 Локация',
+          sensoryTitle: '🔋 Сенсорика',
+          scheduleTitle: '⏰ Расписание',
+          profileTitle: '👤 Профиль ребенка',
+          homeAddressLabel: 'Домашний адрес',
+          schoolNameLabel: 'Школа / сад',
+          sensoryBatteryLabel: 'Включить сенсорный модуль',
+          sensorySensitivityLabel: 'Уровень сенсорной чувствительности',
+          bunnySpeechLabel: 'Речь кролика (TTS)',
+          morningHourLabel: 'Начало утреннего режима',
+          nightHourLabel: 'Начало ночного режима',
+          childNicknameLabel: 'Имя ребенка',
+          childAgeLabel: 'Возраст',
+          reinforcementLabel: 'Любимое поощрение',
+          sparkles: 'Искры',
+          stars: 'Звезды',
+          sound: 'Звук',
+          emergencyResetLabel: '🏠 Сбросить экран',
+          fullResetLabel: '🔄 Перезапустить игру',
+          fullResetConfirm: 'Вы уверены, что хотите сбросить игру?'
         };
       default:
         return {
@@ -194,7 +222,9 @@ const Settings: React.FC<SettingsProps> = ({ language, onClose, onSettingsChange
           save: 'Save',
           cancel: 'Cancel',
           recommendationsTitle: 'Timeline Recommendations',
-          basicSettingsTitle: 'Basic Settings'
+          basicSettingsTitle: 'Basic Settings',
+          languageTitle: 'Language',
+          childAgeLabel: 'Age'
         };
     }
   };
@@ -217,6 +247,30 @@ const Settings: React.FC<SettingsProps> = ({ language, onClose, onSettingsChange
 
         {/* Content */}
         <div className="p-6 space-y-6">
+          <div className="border-b-2 border-purple-200 pb-4">
+            <h3 className="text-xl font-bold text-purple-700 mb-4">{content.languageTitle}</h3>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => onLanguageChange?.(Language.HEBREW)}
+                className={`py-2 rounded-lg font-bold border-2 ${language === Language.HEBREW ? 'bg-purple-500 text-white border-purple-500' : 'bg-white text-gray-700 border-gray-200'}`}
+              >
+                עברית
+              </button>
+              <button
+                onClick={() => onLanguageChange?.(Language.ENGLISH)}
+                className={`py-2 rounded-lg font-bold border-2 ${language === Language.ENGLISH ? 'bg-purple-500 text-white border-purple-500' : 'bg-white text-gray-700 border-gray-200'}`}
+              >
+                English
+              </button>
+              <button
+                onClick={() => onLanguageChange?.(Language.RUSSIAN)}
+                className={`py-2 rounded-lg font-bold border-2 ${language === Language.RUSSIAN ? 'bg-purple-500 text-white border-purple-500' : 'bg-white text-gray-700 border-gray-200'}`}
+              >
+                Русский
+              </button>
+            </div>
+          </div>
+
           {/* Timeline Recommendations Section */}
           <div className="border-b-2 border-purple-200 pb-4">
             <h3 className="text-xl font-bold text-purple-700 mb-4">{content.recommendationsTitle}</h3>
@@ -447,6 +501,17 @@ const Settings: React.FC<SettingsProps> = ({ language, onClose, onSettingsChange
                     onChange={(e) => setSettings(prev => ({ ...prev, childNickname: e.target.value }))}
                     className="w-full px-4 py-2 rounded-xl border-2 border-indigo-200 focus:border-indigo-500 outline-none"
                     placeholder="..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-indigo-600 mb-1">{content.childAgeLabel}</label>
+                  <input
+                    type="number"
+                    min={3}
+                    max={18}
+                    value={settings.childAge ?? 6}
+                    onChange={(e) => setSettings(prev => ({ ...prev, childAge: Math.max(3, Math.min(18, parseInt(e.target.value || '6', 10))) }))}
+                    className="w-full px-4 py-2 rounded-xl border-2 border-indigo-200 focus:border-indigo-500 outline-none"
                   />
                 </div>
                 <div>

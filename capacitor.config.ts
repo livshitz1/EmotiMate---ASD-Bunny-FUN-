@@ -1,8 +1,8 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.yourname.emotimate',
-  appName: 'EmotiMate',
+  appId: 'com.mybunnytime.app',
+  appName: 'My Bunny Time',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

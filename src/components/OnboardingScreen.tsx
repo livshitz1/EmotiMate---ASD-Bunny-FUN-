@@ -17,10 +17,9 @@ interface PetOption {
 }
 
 const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ language, onComplete }) => {
-  const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Name, 2: Age, 3: Pet
+  const [step, setStep] = useState<1 | 2>(1); // 1: Name, 2: Bunny
   const [childName, setChildName] = useState('');
-  const [childAge, setChildAge] = useState<number | null>(null);
-  const [selectedPet, setSelectedPet] = useState<PetType | null>(null);
+  const [selectedPet, setSelectedPet] = useState<PetType | null>(PetType.BUNNY);
   const [isPlaying, setIsPlaying] = useState<{ [key in PetType]?: boolean }>({});
   const [dwellTimes, setDwellTimes] = useState<{ [key in PetType]: number }>({
     [PetType.BUNNY]: 0, [PetType.MAINE_COON]: 0, [PetType.DOG]: 0, [PetType.BEAR]: 0,
@@ -38,11 +37,6 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ language, onComplet
   const audioRefs = useRef<{ [key in PetType]?: HTMLAudioElement }>({});
 
   const pets: PetOption[] = [
-    { type: PetType.ELEPHANT, emoji: '🐘', name: { he: 'פיל', en: 'Elephant', ru: 'Слон' }, voiceProfile: 'very_low', description: { he: 'עמוק ומרגיע', en: 'Deep and calming', ru: 'Глубокий' }, frequencyLabel: { he: 'תדרים נמוכים מאוד', en: 'Very low', ru: 'Очень низкие' } },
-    { type: PetType.DOG, emoji: '🐶', name: { he: 'כלב', en: 'Dog', ru: 'Собака' }, voiceProfile: 'low', description: { he: 'יציב ורגוע', en: 'Steady', ru: 'Спокойный' }, frequencyLabel: { he: 'תדרים נמוכים', en: 'Low', ru: 'Низкие' } },
-    { type: PetType.BEAR, emoji: '🐻', name: { he: 'דוב', en: 'Bear', ru: 'Медведь' }, voiceProfile: 'low_mid', description: { he: 'חם ונעים', en: 'Warm', ru: 'Теплый' }, frequencyLabel: { he: 'תדרים נמוכים-בינוניים', en: 'Low-mid', ru: 'Средне-низкие' } },
-    { type: PetType.MAINE_COON, emoji: '🐱', name: { he: 'חתול', en: 'Cat', ru: 'Кот' }, voiceProfile: 'mid', description: { he: 'עדין ומתפנק', en: 'Gentle', ru: 'Нежный' }, frequencyLabel: { he: 'תדרים בינוניים', en: 'Mid', ru: 'Средние' } },
-    { type: PetType.BIRD, emoji: '🐦', name: { he: 'ציפור', en: 'Bird', ru: 'Птица' }, voiceProfile: 'mid_high', description: { he: 'מלודי ועליז', en: 'Melodic', ru: 'Веселый' }, frequencyLabel: { he: 'תדרים גבוהים', en: 'High', ru: 'Высокие' } },
     { type: PetType.BUNNY, emoji: '🐰', name: { he: 'ארנב', en: 'Rabbit', ru: 'Кролик' }, voiceProfile: 'high', description: { he: 'קופצני ושמח', en: 'Bouncy', ru: 'Прыгучий' }, frequencyLabel: { he: 'תדרים גבוהים מאוד', en: 'Very high', ru: 'Очень высокие' } },
   ];
 
@@ -85,7 +79,7 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ language, onComplet
       interactions: interactions || {},
       avoidedPets: avoidedPets || [],
       frequencySensitivityMap: {}
-    }, childName, childAge || 0);
+    }, childName, 0);
   };
 
   const renderStep1 = () => (
@@ -114,54 +108,11 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ language, onComplet
       </button>
     </div>
   );
-
   const renderStep2 = () => (
-    <div className="flex-1 flex flex-col items-center justify-center px-6 animate-fade-in">
-      <div className="text-6xl mb-8 animate-bounce">🎂</div>
-      <h1 className="text-3xl font-bold text-white mb-2 text-center">בן כמה אתה?</h1>
-      <p className="text-purple-300 opacity-70 mb-10 text-center">זה יעזור לי להכיר אותך טוב יותר</p>
-      
-      <div className="grid grid-cols-3 gap-4 w-full max-w-md">
-        {[3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((age) => (
-          <button
-            key={age}
-            onClick={() => setChildAge(age)}
-            className={`p-4 rounded-2xl text-xl font-bold transition-all border-2 ${
-              childAge === age 
-                ? 'bg-purple-600 border-purple-400 text-white scale-110 shadow-lg' 
-                : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10'
-            }`}
-          >
-            {age}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex gap-4 w-full max-w-md mt-10">
-        <button
-          onClick={() => setStep(1)}
-          className="flex-1 bg-white/10 text-white font-bold py-4 rounded-2xl"
-        >
-          חזרה
-        </button>
-        <button
-          onClick={() => childAge && setStep(3)}
-          disabled={!childAge}
-          className={`flex-[2] bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-xl py-4 rounded-2xl shadow-2xl transition-all ${
-            !childAge ? 'opacity-50 grayscale cursor-not-allowed' : 'active:scale-95'
-          }`}
-        >
-          המשך 🚀
-        </button>
-      </div>
-    </div>
-  );
-
-  const renderStep3 = () => (
     <>
       <div className="flex-1 overflow-y-auto px-6 pt-10 pb-32 flex flex-col items-center scroll-touch">
-        <h1 className="text-3xl font-bold text-white mb-2 text-center">מי יהיה החבר שלך?</h1>
-        <p className="text-purple-300 opacity-70 mb-10 text-center">בחר את החבר שלך</p>
+        <h1 className="text-3xl font-bold text-white mb-2 text-center">החבר שלך הוא ארנב 🐰</h1>
+        <p className="text-purple-300 opacity-70 mb-10 text-center">כרגע החיה היחידה הפעילה היא ארנב</p>
 
         <div className="grid grid-cols-1 gap-4 w-full max-w-md">
           {pets.map((pet) => {
@@ -197,7 +148,7 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ language, onComplet
       <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#121212] via-[#121212]/90 to-transparent pt-12 z-[60]">
         <div className="max-w-md mx-auto flex gap-4">
           <button
-            onClick={() => setStep(2)}
+            onClick={() => setStep(1)}
             className="flex-1 bg-white/10 text-white font-bold py-5 rounded-2xl"
           >
             חזרה
@@ -219,7 +170,6 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ language, onComplet
     <div className="fixed inset-0 bg-[#121212] flex flex-col z-50 overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
       {step === 1 && renderStep1()}
       {step === 2 && renderStep2()}
-      {step === 3 && renderStep3()}
     </div>
   );
 };

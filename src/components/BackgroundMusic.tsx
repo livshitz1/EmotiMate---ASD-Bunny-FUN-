@@ -139,6 +139,29 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
     return saved ? parseFloat(saved) : 0.3;
   });
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [localPlayAll, setLocalPlayAll] = useState<boolean>(() => localStorage.getItem('emotimate_music_play_all') === 'true');
+  const [localRepeat, setLocalRepeat] = useState<boolean>(() => localStorage.getItem('emotimate_music_repeat') === 'true');
+  const [internalSleepTimerEndAt, setInternalSleepTimerEndAt] = useState<number | null>(() => {
+    const raw = localStorage.getItem('emotimate_music_sleep_timer_end');
+    if (!raw) return null;
+    const val = parseInt(raw, 10);
+    if (!Number.isFinite(val)) return null;
+    if (val <= Date.now()) {
+      localStorage.removeItem('emotimate_music_sleep_timer_end');
+      return null;
+    }
+    return val;
+  });
+  const [sleepTimerInitialSeconds, setSleepTimerInitialSeconds] = useState<number | null>(() => {
+    const raw = localStorage.getItem('emotimate_music_sleep_timer_initial_seconds');
+    if (!raw) return null;
+    const val = parseInt(raw, 10);
+    return Number.isFinite(val) ? val : null;
+  });
+  const [sleepTimerRemainingSeconds, setSleepTimerRemainingSeconds] = useState<number | null>(null);
+  const [sleepTimerFinishedPulse, setSleepTimerFinishedPulse] = useState(false);
+  const [playbackPositionSec, setPlaybackPositionSec] = useState<number>(0);
+  const [playbackDurationSec, setPlaybackDurationSec] = useState<number | null>(null);
   
   // Automatically pause if AR is open
   useEffect(() => {
@@ -187,6 +210,53 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
       audioFileRef.current.volume = effectiveVolume;
     }
   }, [effectiveVolume]);
+
+  useEffect(() => {
+    if (!internalSleepTimerEndAt) {
+      setSleepTimerRemainingSeconds(null);
+      return;
+    }
+
+    const updateRemaining = () => {
+      const left = Math.max(0, Math.ceil((internalSleepTimerEndAt - Date.now()) / 1000));
+      setSleepTimerRemainingSeconds(left);
+      if (left <= 0) {
+        setIsPlaying(false);
+        stopAllSounds();
+        setSleepTimerFinishedPulse(true);
+        setTimeout(() => setSleepTimerFinishedPulse(false), 1600);
+        setInternalSleepTimerEndAt(null);
+        setSleepTimerInitialSeconds(null);
+        localStorage.removeItem('emotimate_music_sleep_timer_end');
+        localStorage.removeItem('emotimate_music_sleep_timer_initial_seconds');
+      }
+    };
+
+    updateRemaining();
+    const intId = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(intId);
+  }, [internalSleepTimerEndAt]);
+
+  useEffect(() => {
+    if (!currentTrack?.url || currentTrackId === 'off') {
+      setPlaybackPositionSec(0);
+      setPlaybackDurationSec(null);
+      return;
+    }
+
+    const syncPlayback = () => {
+      const a = audioFileRef.current;
+      if (!a) return;
+      setPlaybackPositionSec(Math.floor(a.currentTime || 0));
+      if (Number.isFinite(a.duration) && a.duration > 0) {
+        setPlaybackDurationSec(Math.floor(a.duration));
+      }
+    };
+
+    syncPlayback();
+    const id = window.setInterval(syncPlayback, 400);
+    return () => window.clearInterval(id);
+  }, [currentTrack?.url, currentTrackId, isPlaying]);
 
   const initAudioContext = () => {
     if (!audioContextRef.current) {
@@ -286,6 +356,7 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
   const playSound = async () => {
     const track = MUSIC_TRACKS.find(t => t.id === currentTrackId);
     if (!track) return;
+    const activeTrackIds = MUSIC_TRACKS.map((t) => t.id);
 
     try {
       const audioContext = initAudioContext();
@@ -302,9 +373,21 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
         // Use the full URL to avoid issues with relative paths in some environments
         const fullUrl = window.location.origin + track.url;
         if (audioFileRef.current.src !== fullUrl) {
-          audioFileRef.current.src = track.url;
-          audioFileRef.current.loop = true;
+          audioFileRef.current.src = fullUrl;
         }
+        audioFileRef.current.loop = effectiveRepeat && !effectivePlayAll;
+        audioFileRef.current.onended = () => {
+          if (effectivePlayAll) {
+            const currentIndex = activeTrackIds.indexOf(track.id);
+            const nextId = activeTrackIds[(currentIndex + 1) % activeTrackIds.length];
+            setCurrentTrackId(nextId);
+            localStorage.setItem('emotimate_background_track_id', nextId);
+            return;
+          }
+          if (!effectiveRepeat) {
+            setIsPlaying(false);
+          }
+        };
         audioFileRef.current.volume = effectiveVolume;
         
         try {
@@ -368,8 +451,8 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
   const handleTrackSelect = (trackId: string) => {
     setCurrentTrackId(trackId);
     localStorage.setItem('emotimate_background_track_id', trackId);
-    setIsPlaying(false);
     stopAllSounds();
+    setIsPlaying(trackId !== 'off');
     
     const track = MUSIC_TRACKS.find(t => t.id === trackId);
     if (onSelectTrack) {
@@ -380,8 +463,6 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
       }
     }
     
-    // סוגר את המודל לאחר בחירה
-    onClose();
   };
 
   const handleVolumeChange = (newVolume: number) => {
@@ -389,8 +470,75 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
     localStorage.setItem('emotimate_background_volume', newVolume.toString());
   };
 
+  const handleTogglePlayAll = () => {
+    const next = !effectivePlayAll;
+    if (onTogglePlayAll) {
+      onTogglePlayAll(next);
+    } else {
+      setLocalPlayAll(next);
+      localStorage.setItem('emotimate_music_play_all', String(next));
+    }
+  };
+
+  const handleToggleRepeat = () => {
+    const next = !effectiveRepeat;
+    if (onToggleRepeat) {
+      onToggleRepeat(next);
+    } else {
+      setLocalRepeat(next);
+      localStorage.setItem('emotimate_music_repeat', String(next));
+    }
+  };
+
+  const startInternalSleepTimer = (minutes: number) => {
+    const endAt = Date.now() + minutes * 60 * 1000;
+    const initialSeconds = minutes * 60;
+    setInternalSleepTimerEndAt(endAt);
+    setSleepTimerInitialSeconds(initialSeconds);
+    setSleepTimerRemainingSeconds(initialSeconds);
+    localStorage.setItem('emotimate_music_sleep_timer_end', String(endAt));
+    localStorage.setItem('emotimate_music_sleep_timer_initial_seconds', String(initialSeconds));
+  };
+
+  const clearInternalSleepTimer = () => {
+    setInternalSleepTimerEndAt(null);
+    setSleepTimerInitialSeconds(null);
+    setSleepTimerRemainingSeconds(null);
+    localStorage.removeItem('emotimate_music_sleep_timer_end');
+    localStorage.removeItem('emotimate_music_sleep_timer_initial_seconds');
+  };
+
+  const seekBy = (deltaSec: number) => {
+    const a = audioFileRef.current;
+    if (!a || !currentTrack?.url) return;
+    const duration = Number.isFinite(a.duration) ? a.duration : null;
+    let next = a.currentTime + deltaSec;
+    if (duration !== null) next = Math.max(0, Math.min(duration, next));
+    else next = Math.max(0, next);
+    a.currentTime = next;
+    setPlaybackPositionSec(Math.floor(next));
+  };
+
+  const formatClock = (sec: number | null) => {
+    if (sec === null) return '--:--';
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
+
   const isHebrew = language === Language.HEBREW;
   const currentTrack = MUSIC_TRACKS.find(t => t.id === currentTrackId);
+  const effectivePlayAll = onTogglePlayAll ? isPlayAll : localPlayAll;
+  const effectiveRepeat = onToggleRepeat ? isRepeat : localRepeat;
+  const hasActiveInternalTimer = internalSleepTimerEndAt !== null && (sleepTimerRemainingSeconds ?? 0) > 0;
+  const timerDisplaySeconds = hasActiveInternalTimer
+    ? (sleepTimerRemainingSeconds ?? 0)
+    : (sleepTimer !== null ? sleepTimer * 60 : null);
+  const timerMinutes = timerDisplaySeconds !== null ? Math.floor(timerDisplaySeconds / 60) : null;
+  const timerSecondsPart = timerDisplaySeconds !== null ? timerDisplaySeconds % 60 : null;
+  const timerProgress = (sleepTimerInitialSeconds && sleepTimerRemainingSeconds !== null)
+    ? Math.max(0, Math.min(100, Math.round((sleepTimerRemainingSeconds / sleepTimerInitialSeconds) * 100)))
+    : null;
 
   if (!show) return null;
 
@@ -417,9 +565,9 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
           {/* Controls: Play All and Repeat */}
           <div className="flex gap-4 p-4 bg-gray-50 rounded-2xl shadow-sm border border-gray-100">
             <button
-              onClick={() => onTogglePlayAll?.(!isPlayAll)}
+              onClick={handleTogglePlayAll}
               className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold transition-all ${
-                isPlayAll
+                effectivePlayAll
                   ? 'bg-purple-600 text-white shadow-md'
                   : 'bg-white text-gray-500 hover:text-purple-400 border border-gray-100'
               }`}
@@ -428,9 +576,9 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
               {isHebrew ? 'נגן הכל' : 'Play All'}
             </button>
             <button
-              onClick={() => onToggleRepeat?.(!isRepeat)}
+              onClick={handleToggleRepeat}
               className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold transition-all ${
-                isRepeat
+                effectiveRepeat
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'bg-white text-gray-500 hover:text-indigo-400 border border-gray-100'
               }`}
@@ -442,31 +590,59 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
 
           {/* Sleep Timer Section */}
           <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100 space-y-3">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center gap-2">
               <h4 className="font-bold text-purple-900 flex items-center gap-2">
                 <span>🌙</span> {isHebrew ? 'טיימר שינה' : 'Sleep Timer'}
               </h4>
-              {sleepTimer !== null && (
-                <span className="timer-badge !static !translate-x-0 !translate-y-0 text-xs font-bold">
-                  {sleepTimer} {isHebrew ? 'דק׳ נותרו' : 'min left'}
+              {timerDisplaySeconds !== null && (
+                <span className={"timer-badge !static !translate-x-0 !translate-y-0 text-xs font-bold " + (sleepTimerFinishedPulse ? 'animate-pulse' : '')}>
+                  {timerMinutes}:{String(timerSecondsPart).padStart(2, '0')} {isHebrew ? 'נותרו' : 'left'}
                 </span>
               )}
             </div>
+
+            {hasActiveInternalTimer && timerProgress !== null && (
+              <div>
+                <div className="h-2 rounded-full bg-purple-200 overflow-hidden">
+                  <div className="h-full bg-purple-600 transition-all duration-500" style={{ width: timerProgress + '%' }} />
+                </div>
+                <div className="text-[11px] text-purple-700 mt-1 font-semibold">
+                  {isHebrew ? 'הטיימר פעיל והמוזיקה תיעצר אוטומטית.' : 'Timer is active. Music will stop automatically.'}
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-2">
-              {[15, 30, 45, 60].map(mins => (
-                <button
-                  key={mins}
-                  onClick={() => onStartSleepTimer?.(mins)}
-                  className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${
-                    sleepTimer === mins
-                      ? 'bg-purple-600 text-white shadow-md'
-                      : 'bg-white text-purple-600 border border-purple-200 hover:bg-purple-100'
-                  }`}
-                >
-                  {mins}{isHebrew ? ' דק׳' : 'm'}
-                </button>
-              ))}
+              {[15, 30, 45, 60].map(mins => {
+                const isSelected = hasActiveInternalTimer && sleepTimerInitialSeconds === mins * 60;
+                return (
+                  <button
+                    key={mins}
+                    onClick={() => {
+                      onStartSleepTimer?.(mins);
+                      startInternalSleepTimer(mins);
+                    }}
+                    className={
+                      "flex-1 py-2 rounded-xl text-sm font-bold transition-all " +
+                      (isSelected
+                        ? 'bg-purple-600 text-white shadow-md'
+                        : 'bg-white text-purple-600 border border-purple-200 hover:bg-purple-100')
+                    }
+                  >
+                    {mins}{isHebrew ? ' דק׳' : 'm'}
+                  </button>
+                );
+              })}
             </div>
+
+            {hasActiveInternalTimer && (
+              <button
+                onClick={clearInternalSleepTimer}
+                className="w-full py-2 rounded-xl text-sm font-bold bg-white border border-purple-200 text-purple-700 hover:bg-purple-100"
+              >
+                {isHebrew ? 'בטל טיימר' : 'Cancel Timer'}
+              </button>
+            )}
           </div>
 
           {/* Category Selector */}
@@ -553,6 +729,39 @@ const BackgroundMusic: React.FC<BackgroundMusicProps> = ({
                   {isPlaying ? '⏸️' : '▶️'}
                 </button>
               </div>
+
+              {currentTrack?.url ? (
+                <div className="rounded-2xl bg-white p-3 border border-purple-200">
+                  <div className="flex items-center justify-between mb-2 text-xs font-semibold text-purple-700">
+                    <span>{isHebrew ? 'שליטה ברצועה' : 'Track Controls'}</span>
+                    <span>{formatClock(playbackPositionSec)} / {formatClock(playbackDurationSec)}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => seekBy(-10)}
+                      className="py-2 rounded-xl bg-purple-100 text-purple-700 font-bold hover:bg-purple-200"
+                    >
+                      {isHebrew ? '⏪ 10ש׳' : '⏪ 10s'}
+                    </button>
+                    <button
+                      onClick={handlePlayPause}
+                      className="py-2 rounded-xl bg-purple-600 text-white font-bold hover:bg-purple-700"
+                    >
+                      {isPlaying ? (isHebrew ? 'הפסק' : 'Pause') : (isHebrew ? 'נגן' : 'Play')}
+                    </button>
+                    <button
+                      onClick={() => seekBy(10)}
+                      className="py-2 rounded-xl bg-purple-100 text-purple-700 font-bold hover:bg-purple-200"
+                    >
+                      {isHebrew ? '10ש׳ ⏩' : '10s ⏩'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl bg-white p-3 border border-purple-200 text-xs text-purple-700 font-semibold">
+                  {isHebrew ? 'ברצועה סינתטית אין קפיצה של 10 שניות.' : 'For synthetic tracks, 10-second seek is not available.'}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <div className="flex justify-between text-sm font-bold text-purple-900">

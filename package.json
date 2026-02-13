@@ -1,8 +1,8 @@
 {
-  "name": "emotimate",
-  "productName": "EmotiMate - ארנב הזמן שלי",
+  "name": "my-bunny-time",
+  "productName": "My Bunny Time",
   "version": "1.0.0",
-  "description": "אפליקציית טמגוצ'י אינטראקטיבית לניהול זמן ורגשות",
+  "description": "My Bunny Time - supportive bunny companion and routine app",
   "main": "electron/main.cjs",
   "scripts": {
     "start": "npm run dev",
@@ -17,11 +17,12 @@
     "capacitor:add:android": "npm run build && npx cap add android",
     "capacitor:sync": "npm run build && npx cap sync",
     "capacitor:sync:ios": "npm run build && npx cap sync ios",
-    "capacitor:sync:android": "npm run build && npx cap sync android",
+    "capacitor:sync:android": "npm run build && npx cap sync android && npm run android:fix:proguard",
     "capacitor:open:ios": "npx cap open ios",
     "capacitor:open:android": "npx cap open android",
     "ios:build": "npm run capacitor:sync:ios && npm run capacitor:open:ios",
-    "android:build": "npm run capacitor:sync:android && npm run capacitor:open:android"
+    "android:build": "npm run capacitor:sync:android && npm run capacitor:open:android",
+    "android:fix:proguard": "node scripts/fix-proguard-compat.cjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.1",
@@ -65,7 +66,7 @@
   },
   "build": {
     "appId": "com.emotimate.app",
-    "productName": "EmotiMate",
+    "productName": "My Bunny Time",
     "mac": {
       "category": "public.app-category.lifestyle",
       "target": [

@@ -24,6 +24,23 @@ release/
 .env
 .env.*
 
+# Local backup / archive folders (never commit)
+BACKUP_BEFORE_RESTORE/
+_ARCHIVE_BACKUP_BEFORE_RESTORE_*/
+_ARCHIVE_REPO_CLEANUP_*/
+
+# local temporary file variants
+* 3.ts
+* 3.tsx
+* 3.css
+*.bak.*
+
+# Android generated
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
 # Unity project folders (large files)
 My Bunny Time/Library/
 My Bunny Time/Temp/

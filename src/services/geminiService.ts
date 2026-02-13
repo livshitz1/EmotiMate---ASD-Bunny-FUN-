@@ -40,6 +40,63 @@ if (!isValidGeminiKey) {
   console.warn("⚠️ Gemini API Key is missing. Using fallback responses.");
 }
 
+export const getGeminiClientStatus = () => ({
+  configured: isValidGeminiKey,
+  keySource: rawApiKey ? 'provided' : 'missing'
+});
+
+type CuriosityLanguage = 'he' | 'en' | 'ru';
+
+export const buildLocalCuriosityAnswer = (
+  rawQuery: string,
+  language: CuriosityLanguage = 'he'
+): string => {
+  const query = (rawQuery || '').toLowerCase();
+
+  const he = language === 'he';
+  const en = language === 'en';
+
+  if (query.includes('מזג') || query.includes('weather') || query.includes('rain') || query.includes('גשם')) {
+    if (he) return '⛅🌦️🧥 מזג אוויר הוא מצב האוויר כרגע: שמש, רוח, גשם או עננים. עננים נוצרים מטיפות מים קטנות באוויר, וכשהן כבדות הן יורדות כגשם. אפשר לבדוק תחזית כדי לדעת איך להתלבש היום.';
+    if (en) return '⛅🌦️🧥 Weather is how the air feels right now: sunny, windy, cloudy, or rainy. Clouds are tiny water drops in the sky, and when they get heavy they fall as rain. A forecast helps us pick the right clothes for the day.';
+    return '⛅🌦️🧥 Погода показывает, что происходит в воздухе сейчас: солнце, ветер, облака или дождь. Облака состоят из маленьких капель воды, и когда они становятся тяжелыми, начинается дождь. Прогноз помогает выбрать одежду.';
+  }
+
+  if (query.includes('חלל') || query.includes('space') || query.includes('planet') || query.includes('כוכב')) {
+    if (he) return '🪐🚀✨ בחלל יש כוכבים, כוכבי לכת וירחים. כדור הארץ הוא כוכב לכת שמסתובב סביב השמש, והירח מסתובב סביבנו. אסטרונאוטים חוקרים את החלל בעזרת חלליות.';
+    if (en) return '🪐🚀✨ Space has stars, planets, and moons. Earth is a planet that moves around the Sun, and the Moon moves around Earth. Astronauts use spacecraft to explore space.';
+    return '🪐🚀✨ В космосе есть звезды, планеты и спутники. Земля вращается вокруг Солнца, а Луна вокруг Земли. Астронавты изучают космос на космических кораблях.';
+  }
+
+  if (query.includes('דינוז') || query.includes('dino')) {
+    if (he) return '🦖🦴🌍 דינוזאורים חיו לפני מיליוני שנים. היו קטנים וגדולים, וחלקם אכלו צמחים וחלקם בשר. אנחנו לומדים עליהם מעצמות ומאובנים שנמצאים באדמה.';
+    if (en) return '🦖🦴🌍 Dinosaurs lived millions of years ago. Some were tiny and some were huge, and they ate different foods. We learn about them from fossils found in rocks and soil.';
+    return '🦖🦴🌍 Динозавры жили миллионы лет назад. Были маленькие и очень большие виды, и они ели разную еду. Мы узнаем о них по окаменелостям.';
+  }
+
+  if (query.includes('ים') || query.includes('דג') || query.includes('fish') || query.includes('sea') || query.includes('ocean')) {
+    if (he) return '🌊🐟🫧 בים חיים דגים, אלמוגים וחיות נוספות. דגים נושמים במים בעזרת זימים, שהם כמו פילטר קטן. הים חשוב כי הוא נותן בית להרבה יצורים ושומר על אקלים העולם.';
+    if (en) return '🌊🐟🫧 The sea is home to fish, corals, and many other animals. Fish breathe in water with gills, like tiny filters. Oceans are important because they support life and help balance Earth’s climate.';
+    return '🌊🐟🫧 В море живут рыбы, кораллы и многие другие существа. Рыбы дышат в воде с помощью жабр, как маленьких фильтров. Океаны важны для жизни и климата.';
+  }
+
+  if (query.includes('גוף') || query.includes('לב') || query.includes('brain') || query.includes('body')) {
+    if (he) return '🧠❤️👣 הגוף שלנו עובד כמו צוות: המוח חושב, הלב מזרים דם והריאות מכניסות חמצן. שינה, מים ואוכל בריא עוזרים לגוף לעבוד טוב. תנועה קלה כל יום מחזקת אותנו.';
+    if (en) return '🧠❤️👣 Your body works like a team: the brain thinks, the heart pumps blood, and the lungs bring in oxygen. Sleep, water, and healthy food help the body work well. Daily movement makes us stronger.';
+    return '🧠❤️👣 Наше тело работает как команда: мозг думает, сердце качает кровь, а легкие дают кислород. Сон, вода и полезная еда помогают телу. Движение каждый день делает нас сильнее.';
+  }
+
+  if (query.includes('רובוט') || query.includes('robot')) {
+    if (he) return '🤖⚙️💡 רובוט הוא מכונה שיכולה לבצע פעולות לפי הוראות. יש רובוטים שמנקים, עוזרים במפעלים ואפילו חוקרים חלל. מה שהופך רובוט לחכם הוא התוכנה שמריצה אותו.';
+    if (en) return '🤖⚙️💡 A robot is a machine that follows instructions to do tasks. Some robots clean, help in factories, or explore space. Software is what makes a robot act smart.';
+    return '🤖⚙️💡 Робот — это машина, которая выполняет задачи по инструкциям. Есть роботы для уборки, заводов и даже космоса. Программа делает робота «умным».';
+  }
+
+  if (he) return '📚✨ שאלה מעולה! בקצרה: זה נושא שאפשר לחקור צעד-צעד עם דוגמה פשוטה מהיום-יום. רוצה שנתחיל ב־3 עובדות קצרות ואז חידון קטן?';
+  if (en) return '📚✨ Great question! We can explore it step by step with simple examples. Want 3 quick facts and then a tiny quiz?';
+  return '📚✨ Отличный вопрос! Давай разберем его по шагам с простыми примерами. Хочешь 3 коротких факта и мини-викторину?';
+};
+
 /**
  * Generates a text response from EmotiMate (the bunny).
  */
@@ -129,7 +186,8 @@ export const generateEmotiMateResponse = async (
       return "🎓🔍📚 ברוכים הבאים למועדון הסקרנות! 🎓 מה נרצה לחקור היום? חלל, דינוזאורים, או אולי משהו אחר? אני מוכן לגלות הכל יחד איתך!";
     }
     if (act.includes('curiosity_question')) {
-      return "📚🤔✨ זו שאלה מצוינת! תן לי רגע לבדוק בספרים שלי... 📚";
+      const query = action.split(':').slice(1).join(':').trim();
+      return buildLocalCuriosityAnswer(query, 'he');
     }
     if (act.includes('dream_share')) {
       if (act.includes('🐉')) {
